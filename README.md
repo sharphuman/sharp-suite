@@ -1,5 +1,5 @@
 # Sharp Suite - Standalone Apps
-
+# SH
 Each app is completely self-contained. No shared imports.
 
 ## Passwords
