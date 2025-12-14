@@ -63,7 +63,12 @@ def render_auth():
             st.markdown("<p style='text-align:center;color:#6b7280;'>— or —</p>",unsafe_allow_html=True)
             me=st.text_input("",key="me",placeholder="Email for magic link")
             if st.button("✨ Magic Link",use_container_width=True,key="ml"):
-                if me: r=supabase_magic_link(me);st.success(r["message"]) if r["success"] else st.error(r["message"])
+                if me:
+                    r = supabase_magic_link(me)
+                    if r["success"]:
+                        st.success(r["message"])
+                    else:
+                        st.error(r["message"])
         with t2:
             se,sp,sc = st.text_input("Email",key="se"),st.text_input("Password",type="password",key="sp"),st.text_input("Confirm",type="password",key="sc")
             if st.button("Create Account",use_container_width=True):

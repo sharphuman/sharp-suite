@@ -74,11 +74,7 @@ def render_auth():
             if st.button("Create Account",use_container_width=True):
                 if sp!=sc: st.error("Passwords don't match")
                 elif len(sp)<6: st.warning("6+ chars")
-                elif se and sp: r=supabase_sign_up(se,sp)
-                    if r["success"]:
-                        st.success(r["message"])
-                    else:
-                        st.error(r["message"])
+                elif se and sp: r=supabase_sign_up(se,sp);st.success(r["message"]) if r["success"] else st.error(r["message"])
 
 st.set_page_config(page_title="Sharp Sales",page_icon="💰",layout="wide")
 init_session()
