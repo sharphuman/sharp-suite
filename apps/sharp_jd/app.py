@@ -1,4 +1,4 @@
-"""Sharp JD - Job Description Writer with Shared Auth"""
+"""Sharp JD - Job Description Writer with Shared Auth T """
 import streamlit as st
 import os
 
