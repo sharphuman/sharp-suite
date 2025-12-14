@@ -63,13 +63,22 @@ def render_auth():
             st.markdown("<p style='text-align:center;color:#6b7280;'>— or —</p>",unsafe_allow_html=True)
             me=st.text_input("",key="me",placeholder="Email for magic link")
             if st.button("✨ Magic Link",use_container_width=True,key="ml"):
-                if me: r=supabase_magic_link(me);st.success(r["message"]) if r["success"] else st.error(r["message"])
+                if me:
+                    r = supabase_magic_link(me)
+                    if r["success"]:
+                        st.success(r["message"])
+                    else:
+                        st.error(r["message"])
         with t2:
             se,sp,sc = st.text_input("Email",key="se"),st.text_input("Password",type="password",key="sp"),st.text_input("Confirm",type="password",key="sc")
             if st.button("Create Account",use_container_width=True):
                 if sp!=sc: st.error("Passwords don't match")
                 elif len(sp)<6: st.warning("6+ chars")
-                elif se and sp: r=supabase_sign_up(se,sp);st.success(r["message"]) if r["success"] else st.error(r["message"])
+                elif se and sp: r=supabase_sign_up(se,sp)
+                    if r["success"]:
+                        st.success(r["message"])
+                    else:
+                        st.error(r["message"])
 
 st.set_page_config(page_title="Sharp Assistant",page_icon="🤖",layout="wide")
 init_session()
