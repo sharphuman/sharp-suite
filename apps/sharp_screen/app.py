@@ -899,8 +899,8 @@ with tab_screen:
             jd_text = extract_text_from_file(f)
             st.success(f"✅ Loaded {f.name}")
     else:
-    jd_text = st.text_area("Paste Job Description:", height=150, 
-        placeholder="Paste the full job description here including:\n• Required qualifications & skills\n• Responsibilities\n• Experience level\n• Salary range (if available)")
+        jd_text = st.text_area("Paste Job Description:", height=150, 
+            placeholder="Paste the full job description here including:\n• Required qualifications & skills\n• Responsibilities\n• Experience level\n• Salary range (if available)")
     
     st.markdown("---")
     
