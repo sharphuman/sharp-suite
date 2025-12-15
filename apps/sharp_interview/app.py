@@ -816,7 +816,7 @@ def display_candidate_result(result_data, candidate_name):
     st.markdown("---")
     st.markdown("### Focus Area Scores")
     
-    for area in result_data.get('focus_areas', []):
+    for idx, area in enumerate(result_data.get('focus_areas', [])):
         area_name = str(area.get('area', 'Unknown Area'))
         # Sanitize area name - remove any non-printable characters
         area_name = ''.join(c if c.isprintable() else '' for c in area_name)
