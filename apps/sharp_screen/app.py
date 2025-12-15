@@ -7,6 +7,8 @@ import secrets
 import json
 import re
 import io
+import zipfile
+from xml.etree import ElementTree
 
 SUPABASE_URL = "https://qkjtprqgblnfftrotyks.supabase.co"
 SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFranRwcnFnYmxuZmZ0cm90eWtzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUzNTgzNDAsImV4cCI6MjA4MDkzNDM0MH0.pVzSq4M5i58zBGl7OPDhNL9qYBcg-bz8MVrBI5MQSkw"
@@ -157,27 +159,112 @@ def submit_feedback(app, feedback_type, message):
 # FILE PROCESSING
 # ============================================
 
+def is_readable_text(text):
+    """Check if extracted text is actually readable"""
+    if not text or len(text.strip()) < 10:
+        return False
+    alpha_chars = sum(1 for c in text if c.isalpha())
+    alpha_ratio = alpha_chars / len(text) if len(text) > 0 else 0
+    return alpha_ratio > 0.3
+
+def clean_extracted_text(text):
+    """Clean up extracted text"""
+    if not text:
+        return ""
+    cleaned = ''.join(c if c.isprintable() or c in '\n\r\t' else ' ' for c in text)
+    cleaned = re.sub(r'[ \t]+', ' ', cleaned)
+    cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
+    return cleaned.strip()
+
 def extract_text_from_file(uploaded_file):
     file_type = uploaded_file.name.split('.')[-1].lower()
     content = uploaded_file.read()
     uploaded_file.seek(0)
     
     if file_type == 'txt':
-        return content.decode('utf-8', errors='ignore')
+        return clean_extracted_text(content.decode('utf-8', errors='ignore'))
+    
     elif file_type == 'pdf':
+        extracted_text = ""
+        
+        # Try PyMuPDF with multiple methods
         try:
             import fitz
             pdf = fitz.open(stream=content, filetype="pdf")
-            return "".join([page.get_text() for page in pdf])
+            text_parts = []
+            for page in pdf:
+                page_text = page.get_text("text")
+                if not page_text or not page_text.strip():
+                    page_text = page.get_text("text", flags=fitz.TEXT_PRESERVE_WHITESPACE)
+                if not page_text or not page_text.strip():
+                    blocks = page.get_text("blocks")
+                    page_text = "\n".join([b[4] for b in blocks if b[6] == 0])
+                if page_text and page_text.strip():
+                    text_parts.append(page_text)
+            pdf.close()
+            extracted_text = "\n".join(text_parts)
         except:
-            return re.sub(r'[^\x20-\x7E\n]', ' ', content.decode('utf-8', errors='ignore'))
+            pass
+        
+        if extracted_text and extracted_text.strip():
+            cleaned = clean_extracted_text(extracted_text)
+            if is_readable_text(cleaned):
+                return cleaned
+        
+        # Try pdfplumber
+        try:
+            import pdfplumber
+            with pdfplumber.open(io.BytesIO(content)) as pdf:
+                text_parts = [page.extract_text() for page in pdf.pages if page.extract_text()]
+                extracted_text = "\n".join(text_parts)
+                if extracted_text:
+                    cleaned = clean_extracted_text(extracted_text)
+                    if is_readable_text(cleaned):
+                        return cleaned
+        except:
+            pass
+        
+        # Last resort
+        try:
+            import fitz
+            pdf = fitz.open(stream=content, filetype="pdf")
+            text_parts = [page.get_text() for page in pdf]
+            pdf.close()
+            result = clean_extracted_text("\n".join(text_parts))
+            if len(result) > 50:
+                return result
+        except:
+            pass
+        
+        return "[PDF extraction failed - please paste content directly]"
+    
     elif file_type in ['docx', 'doc']:
         try:
             from docx import Document
             doc = Document(io.BytesIO(content))
-            return '\n'.join([p.text for p in doc.paragraphs])
+            paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
+            for table in doc.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        if cell.text.strip():
+                            paragraphs.append(cell.text.strip())
+            if paragraphs:
+                return clean_extracted_text('\n\n'.join(paragraphs))
         except:
-            return "[DOCX requires python-docx]"
+            pass
+        
+        try:
+            with zipfile.ZipFile(io.BytesIO(content)) as z:
+                if 'word/document.xml' in z.namelist():
+                    xml_content = z.read('word/document.xml')
+                    tree = ElementTree.fromstring(xml_content)
+                    texts = [elem.text for elem in tree.iter() if elem.text and elem.text.strip()]
+                    if texts:
+                        return clean_extracted_text(' '.join(texts))
+        except:
+            pass
+        
+        return "[DOCX extraction failed - please paste content directly]"
     elif file_type == 'json':
         try:
             data = json.loads(content.decode('utf-8'))
