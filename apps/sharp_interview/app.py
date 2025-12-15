@@ -14,6 +14,33 @@ from xml.etree import ElementTree
 # ============================================
 # SHARED MODULE IMPORTS
 # ============================================
+
+# Try to import shared logging first
+try:
+    import shared_logging as log
+    log.set_app_name("interview")
+    HAS_LOGGING = True
+except ImportError:
+    HAS_LOGGING = False
+    # Minimal fallback logging
+    class FallbackLog:
+        @staticmethod
+        def debug(msg, **kwargs): print(f"[DEBUG] {msg}")
+        @staticmethod
+        def info(msg, **kwargs): print(f"[INFO] {msg}")
+        @staticmethod
+        def warn(msg, **kwargs): print(f"[WARN] {msg}")
+        @staticmethod
+        def error(msg, **kwargs): print(f"[ERROR] {msg}")
+        @staticmethod
+        def log_import_status(success, module, error_msg=None):
+            if success:
+                print(f"[INFO] Imported {module}")
+            else:
+                print(f"[WARN] Failed to import {module}: {error_msg}")
+    log = FallbackLog()
+
+# Now import shared config and UI
 try:
     from shared_config import (
         SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_KEY,
@@ -29,13 +56,14 @@ try:
         COLORS
     )
     USING_SHARED = True
-    print("[INFO] Successfully loaded shared_ui and shared_config")
+    log.log_import_status(True, "shared_ui + shared_config")
 except ImportError as e:
-    # Fallback if shared modules not available
     USING_SHARED = False
-    print(f"[WARN] Could not import shared modules: {e}")
-    print(f"[WARN] Current working directory: {os.getcwd()}")
-    print(f"[WARN] Files in cwd: {os.listdir('.')[:20]}")
+    log.log_import_status(False, "shared_ui + shared_config", str(e))
+    log.warn(f"Current working directory: {os.getcwd()}")
+    log.warn(f"Files in cwd: {os.listdir('.')[:20]}")
+    
+    # Fallback values
     SUPABASE_URL = "https://qkjtprqgblnfftrotyks.supabase.co"
     SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFranRwcnFnYmxuZmZ0cm90eWtzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUzNTgzNDAsImV4cCI6MjA4MDkzNDM0MH0.pVzSq4M5i58zBGl7OPDhNL9qYBcg-bz8MVrBI5MQSkw"
     SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", SUPABASE_ANON_KEY)
