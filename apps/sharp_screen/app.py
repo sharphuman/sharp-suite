@@ -899,7 +899,8 @@ with tab_screen:
             jd_text = extract_text_from_file(f)
             st.success(f"✅ Loaded {f.name}")
     else:
-        jd_text = st.text_area("Paste Job Description:", height=150, placeholder="Paste job description here...")
+    jd_text = st.text_area("Paste Job Description:", height=150, 
+        placeholder="Paste the full job description here including:\n• Required qualifications & skills\n• Responsibilities\n• Experience level\n• Salary range (if available)")
     
     st.markdown("---")
     
@@ -920,7 +921,8 @@ with tab_screen:
                 st.success(f"✅ {len(cands)} candidates parsed")
                 cvs_text = "\n\n---\n\n".join([json.dumps(c, indent=2) for c in cands])
     else:
-        cvs_text = st.text_area("Paste CVs (separate with ---):", height=180, placeholder="CV 1...\n\n---\n\nCV 2...")
+        cvs_text = st.text_area("Paste CVs (separate with ---):", height=180, 
+            placeholder="Paste candidate resumes here, separated by ---\n\nExample:\nJohn Smith - Software Engineer\n5 years Python, AWS...\n\n---\n\nJane Doe - Backend Developer\n3 years Node.js, PostgreSQL...")
     
     st.markdown("---")
     
@@ -1166,15 +1168,38 @@ with tab_salary:
             else:
                 st.error(result)
 
-# Floating Feedback
-st.markdown("---")
-with st.container():
-    fb_col1, fb_col2, fb_col3 = st.columns([2, 1, 1])
-    with fb_col3:
-        if st.checkbox("💬 Feedback", key="show_fb"):
-            fb_type = st.selectbox("Type", ["Bug", "Feature", "General"], key="fb_type")
-            fb_msg = st.text_area("Message", height=80, key="fb_msg")
-            if st.button("Submit", key="fb_submit"):
-                if fb_msg:
-                    submit_feedback("screen", fb_type.lower(), fb_msg)
-                    st.success("Thanks!")
+# ============================================
+# FLOATING FEEDBACK (Clean popover)
+# ============================================
+st.markdown('<div style="height:60px;"></div>', unsafe_allow_html=True)
+
+st.markdown("""
+<style>
+div[data-testid="stPopover"] button {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 25px !important;
+    padding: 10px 20px !important;
+    font-weight: 600 !important;
+    box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+}
+</style>
+""", unsafe_allow_html=True)
+
+_, _, _, fb_col = st.columns([4, 1, 1, 1])
+with fb_col:
+    with st.popover("💬 Feedback"):
+        st.markdown("**Send Feedback**")
+        fb_type = st.segmented_control("Type", ["🐛 Bug", "✨ Feature", "💬 General"], 
+                                        default="💬 General", label_visibility="collapsed")
+        fb_msg = st.text_area("Message", height=100, placeholder="What's on your mind?",
+                              label_visibility="collapsed", key="fb_msg")
+        if st.button("Send Feedback", type="primary", use_container_width=True, key="fb_send"):
+            if fb_msg:
+                t = fb_type.split()[1].lower() if fb_type else "general"
+                success = submit_feedback("screen", t, fb_msg)
+                if success:
+                    st.success("Thanks! 🙏")
+                else:
+                    st.error("Failed to send")
