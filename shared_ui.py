@@ -49,28 +49,24 @@ EXTERNAL_LINKS = {
 # ===========================================
 
 COLORS = {
-    # Primary palette 
-    "primary": "#3b82f6",       # Blue for app buttons
+    # Primary palette - Blue for app buttons
+    "primary": "#3b82f6",
     "primary_light": "#60a5fa",
     "primary_dark": "#2563eb",
-    "secondary": "#8b5cf6",     # Purple accent
+    "secondary": "#8b5cf6",
     
-    # Pink/Magenta for highlights
+    # Pink/Magenta for highlights and top banner
     "pink": "#db2777",
     "pink_light": "#ec4899",
     "pink_dark": "#be185d",
     
-    # Green for CTAs (like website "Try Sharp Suite")
-    "green": "#10b981",
-    "green_light": "#34d399",
-    "green_dark": "#059669",
-    
-    # Background (matching website - very dark)
-    "bg_dark": "#0c0c10",       # Main background
-    "bg_card": "#12121a",       # Cards slightly lighter
-    "bg_sidebar": "#0c0c10",    # Sidebar same as main
-    "bg_input": "#1a1a24",      # Input fields
-    "bg_hover": "#1f1f2e",      # Hover state
+    # Background (matching website)
+    "bg_dark": "#0c0c10",
+    "bg_card": "#12121a",
+    "bg_sidebar": "#0c0c10",
+    "bg_input": "#1a1a24",
+    "bg_hover": "#1f1f2e",
+    "bg_banner": "#2d2d2d",      # Top banner background like website
     
     # Text
     "text_primary": "#ffffff",
@@ -84,7 +80,7 @@ COLORS = {
     "error": "#ef4444",
     "info": "#3b82f6",
     
-    # Borders (subtle, like website)
+    # Borders
     "border": "rgba(255, 255, 255, 0.08)",
     "border_light": "rgba(255, 255, 255, 0.12)",
     "border_card": "rgba(99, 102, 241, 0.15)",
@@ -508,7 +504,7 @@ def get_global_css():
     
     /* ========== TOP BANNER ========== */
     .top-banner {{
-        background: {COLORS["bg_dark"]};
+        background: #2d2d2d;
         border-bottom: 1px solid {COLORS["border"]};
         padding: 12px 24px;
         display: flex;
@@ -525,28 +521,28 @@ def get_global_css():
         gap: 12px;
     }}
     
-    /* Green filled buttons - matching website CTA style */
+    /* Pink filled buttons - matching website exactly */
     .top-banner-btn-pink {{
-        background: {COLORS["green"]};
+        background: #db2777;
         color: white !important;
         text-decoration: none !important;
         font-size: 14px;
         font-weight: 600;
         padding: 10px 24px;
-        border-radius: 25px;
+        border-radius: 6px;
         transition: all 0.2s;
         display: inline-block;
         border: none;
     }}
     
     .top-banner-btn-pink:hover {{
-        background: {COLORS["green_dark"]};
+        background: #be185d;
         transform: translateY(-1px);
         text-decoration: none !important;
-        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+        box-shadow: 0 4px 12px rgba(219, 39, 119, 0.3);
     }}
     
-    /* Outline button - white border like website */
+    /* Outline button - white/light border like website */
     .top-banner-btn-outline {{
         background: transparent;
         color: white !important;
@@ -554,14 +550,14 @@ def get_global_css():
         font-size: 14px;
         font-weight: 600;
         padding: 10px 24px;
-        border-radius: 25px;
-        border: 2px solid white;
+        border-radius: 6px;
+        border: 2px solid #60a5fa;
         transition: all 0.2s;
         display: inline-block;
     }}
     
     .top-banner-btn-outline:hover {{
-        background: rgba(255, 255, 255, 0.1);
+        background: rgba(96, 165, 250, 0.1);
         transform: translateY(-1px);
         text-decoration: none !important;
     }}
