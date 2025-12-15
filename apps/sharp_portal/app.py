@@ -316,16 +316,31 @@ def render_sidebar():
         </div>
         """, unsafe_allow_html=True)
         
-        st.markdown("#### 🧭 Quick Links")
+        st.markdown("#### 🧭 Apps")
         
         # Current app indicator
         st.button("🏠 Portal ◀", disabled=True, use_container_width=True)
         
-        st.markdown("---")
+        # All other apps
+        apps = [
+            ("jd", "📝 JD Writer"),
+            ("screen", "🔍 CV Screener"),
+            ("interview", "🎯 Interview"),
+            ("source", "🎣 Sourcing"),
+            ("content", "✍️ Content"),
+            ("sales", "💰 Sales"),
+            ("reach", "🚀 Reach"),
+            ("assistant", "🤖 Assistant"),
+        ]
+        
+        for app_key, label in apps:
+            st.link_button(label, build_app_url(app_key), use_container_width=True)
         
         if st.session_state.get("is_god") or st.session_state.get("user_plan") == "god":
-            st.link_button("⚙️ Admin Dashboard", build_app_url("admin"), use_container_width=True)
             st.markdown("---")
+            st.link_button("⚙️ Admin Dashboard", build_app_url("admin"), use_container_width=True)
+        
+        st.markdown("---")
         
         if st.button("🚪 Logout", use_container_width=True):
             st.session_state.authenticated = False
@@ -346,6 +361,19 @@ def render_dashboard():
         background-attachment: fixed;
         background-size: cover;
         background-position: center;
+        background-blend-mode: overlay;
+    }
+    
+    .stApp::before {
+        content: '';
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(26, 26, 26, 0.85);
+        pointer-events: none;
+        z-index: -1;
     }
     
     h1, h2, h3, h4 { color: white !important; }
@@ -378,6 +406,27 @@ def render_dashboard():
         color: white !important;
         border: none !important;
     }
+    
+    .welcome-tile {
+        background: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(99,102,241,0.4);
+        border-radius: 16px;
+        padding: 28px 32px;
+        margin-bottom: 24px;
+    }
+    .welcome-title {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: white;
+        margin: 0 0 12px 0;
+    }
+    .welcome-desc {
+        font-size: 1rem;
+        color: #c4c4c4;
+        margin: 0;
+        line-height: 1.6;
+    }
     </style>""", unsafe_allow_html=True)
     
     # Header
@@ -387,6 +436,18 @@ def render_dashboard():
         <div>
             <h1 style="margin:0;">Sharp Suite</h1>
             <p style="color:#9ca3af;margin:0;">Your AI Recruiting Toolkit</p>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Welcome tile
+    st.markdown("""
+    <div class="welcome-tile">
+        <div class="welcome-title">👋 Welcome to Sharp Suite</div>
+        <div class="welcome-desc">
+            Sharp Suite is your AI-powered recruiting command center. Write job descriptions in seconds, 
+            screen CVs automatically, generate interview questions, craft personalized outreach, and more — 
+            all powered by cutting-edge AI. Pick a tool below to get started.
         </div>
     </div>
     """, unsafe_allow_html=True)
