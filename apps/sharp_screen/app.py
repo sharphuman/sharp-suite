@@ -90,7 +90,7 @@ def init_session():
         ('authenticated', False), ('user', None), ('is_god', False), ('session_token', None),
         ('user_plan', 'free'), ('screening_results', None), ('working_on', None),
         ('anonymized_result', None), ('selected_candidates', []), ('candidate_statuses', {}),
-        ('comparison_result', None), ('feedback_open', False), ('feedback_sent', False),
+        ('comparison_result', None), ('hm_summary', None), ('parsed_data', None),
     ]
     for k, v in defaults:
         if k not in st.session_state:
@@ -243,7 +243,7 @@ def screen_candidates(jd_text, cvs_text, options):
 - AI Detection: {options.get('ai_detection', True)}
 - Salary Estimate: {options.get('salary_estimate', True)}
 
-## OUTPUT (JSON) - Include categorized skills breakdown:
+## OUTPUT (JSON):
 ```json
 {{
     "screening_summary": {{
@@ -265,8 +265,6 @@ def screen_candidates(jd_text, cvs_text, options):
                 "soft_skills": {{"matched": <n>, "total": <n>, "details": []}},
                 "industry_experience": {{"matched": <n>, "total": <n>, "details": []}}
             }},
-            "required_skills_match": "<X/Y>",
-            "preferred_skills_match": "<X/Y>",
             "experience_years": <number>,
             "salary_alignment": "<Within Range | Above | Below | Unknown>",
             "why_this_score": "<2-3 sentences>",
@@ -324,28 +322,34 @@ def generate_email_template(candidate, template_type, job_title=""):
     return call_claude(templates.get(template_type, templates["phone_screen"]), max_tokens=800, action=f"email_{template_type}")
 
 def generate_hiring_manager_summary(candidates_data, bias_free=True):
-    prompt = f"""Generate Hiring Manager briefing:
+    prompt = f"""Generate a Hiring Manager briefing summary. Return ONLY the formatted summary, NOT JSON.
 
 ## CANDIDATES:
 {json.dumps(candidates_data, indent=2)}
 
-{"Remove all PII" if bias_free else "Include names"}
+{"Remove all PII (use Candidate A, B, C)" if bias_free else "Include names"}
 
-## OUTPUT (JSON):
-```json
-{{
-    "executive_summary": "<1-2 sentences>",
-    "candidates": [
-        {{
-            "identifier": "<name>",
-            "fit": "<bullet>",
-            "gaps": "<bullet>",
-            "action": "<bullet>"
-        }}
-    ],
-    "overall_recommendation": "<prioritize who>"
-}}
-```"""
+## FORMAT YOUR RESPONSE LIKE THIS:
+
+EXECUTIVE SUMMARY
+[1-2 sentence overview of the candidate pool]
+
+CANDIDATE RECOMMENDATIONS
+
+[For each candidate:]
+CANDIDATE [A/B/C or Name]
+• Fit: [What makes them a good/poor fit]
+• Gaps: [Key concerns or missing skills]  
+• Action: [Recommended next step]
+• Interview Focus: [What to probe in interview]
+
+OVERALL RECOMMENDATION
+[Which candidate(s) to prioritize and why]
+
+RISK ASSESSMENT
+[Any hiring risks to consider]
+
+Write in clear, professional prose. No JSON."""
     return call_claude(prompt, max_tokens=2000, action="hm_summary")
 
 def anonymize_cv(cv_text, options):
@@ -386,106 +390,171 @@ LOCATION: {location}
     return call_claude(prompt, max_tokens=1500, action="salary")
 
 # ============================================
-# PDF GENERATION
+# PDF GENERATION (Real PDF using reportlab)
 # ============================================
 
-def generate_pdf_report(data, title=""):
+def generate_pdf_bytes(data, title="CV Screening Report"):
+    """Generate actual PDF file using reportlab"""
     try:
+        from reportlab.lib.pagesizes import letter, A4
+        from reportlab.lib import colors
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import inch
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, HRFlowable
+        from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+        
         if isinstance(data, str):
             data = json.loads(data)
+        
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch)
+        
+        styles = getSampleStyleSheet()
+        
+        # Custom styles
+        title_style = ParagraphStyle('CustomTitle', parent=styles['Title'], fontSize=24, textColor=colors.HexColor('#6366f1'), spaceAfter=12)
+        heading_style = ParagraphStyle('CustomHeading', parent=styles['Heading1'], fontSize=16, textColor=colors.HexColor('#1f2937'), spaceBefore=20, spaceAfter=10)
+        subheading_style = ParagraphStyle('CustomSubheading', parent=styles['Heading2'], fontSize=14, textColor=colors.HexColor('#6366f1'), spaceBefore=15, spaceAfter=8)
+        body_style = ParagraphStyle('CustomBody', parent=styles['Normal'], fontSize=10, textColor=colors.HexColor('#374151'), spaceAfter=6)
+        small_style = ParagraphStyle('Small', parent=styles['Normal'], fontSize=9, textColor=colors.HexColor('#6b7280'))
+        green_style = ParagraphStyle('Green', parent=styles['Normal'], fontSize=10, textColor=colors.HexColor('#059669'))
+        red_style = ParagraphStyle('Red', parent=styles['Normal'], fontSize=10, textColor=colors.HexColor('#dc2626'))
+        score_high = ParagraphStyle('ScoreHigh', parent=styles['Normal'], fontSize=20, textColor=colors.HexColor('#10b981'), alignment=TA_CENTER)
+        score_med = ParagraphStyle('ScoreMed', parent=styles['Normal'], fontSize=20, textColor=colors.HexColor('#f59e0b'), alignment=TA_CENTER)
+        score_low = ParagraphStyle('ScoreLow', parent=styles['Normal'], fontSize=20, textColor=colors.HexColor('#ef4444'), alignment=TA_CENTER)
+        
+        story = []
+        
+        # Header
+        story.append(Paragraph("📊 CV Screening Report", title_style))
+        story.append(Paragraph(f"{title} | Generated: {datetime.now().strftime('%B %d, %Y at %I:%M %p')}", small_style))
+        story.append(Spacer(1, 20))
+        story.append(HRFlowable(width="100%", thickness=2, color=colors.HexColor('#6366f1')))
+        story.append(Spacer(1, 20))
         
         summary = data.get('screening_summary', {})
         candidates = data.get('candidates', [])
         insights = data.get('batch_insights', {})
         
-        html = f"""<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>CV Screening Report</title>
-    <style>
-        @page {{ margin: 0.75in; }}
-        body {{ font-family: 'Segoe UI', Arial, sans-serif; font-size: 11pt; line-height: 1.5; color: #1f2937; max-width: 8.5in; margin: 0 auto; padding: 20px; }}
-        .header {{ background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; padding: 30px; margin: -20px -20px 30px -20px; text-align: center; }}
-        .header h1 {{ margin: 0; font-size: 24pt; }}
-        .summary-grid {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 30px; }}
-        .summary-card {{ background: #f3f4f6; padding: 20px; border-radius: 8px; text-align: center; }}
-        .summary-card .number {{ font-size: 28pt; font-weight: bold; color: #6366f1; }}
-        .summary-card .label {{ font-size: 10pt; color: #6b7280; text-transform: uppercase; }}
-        .candidate {{ border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px; margin-bottom: 20px; page-break-inside: avoid; }}
-        .candidate-header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 2px solid #e5e7eb; }}
-        .candidate-rank {{ background: #6366f1; color: white; padding: 6px 16px; border-radius: 20px; font-weight: bold; }}
-        .score {{ font-size: 24pt; font-weight: bold; }}
-        .score-high {{ color: #10b981; }}
-        .score-med {{ color: #f59e0b; }}
-        .score-low {{ color: #ef4444; }}
-        .skills-grid {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0; }}
-        .skill-box {{ background: #f9fafb; padding: 12px; border-radius: 6px; text-align: center; }}
-        .skill-box .name {{ font-size: 9pt; color: #6b7280; text-transform: uppercase; }}
-        .skill-box .value {{ font-size: 14pt; font-weight: bold; color: #1f2937; }}
-        .tag {{ display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 9pt; margin: 2px; }}
-        .tag-green {{ background: #d1fae5; color: #059669; }}
-        .tag-red {{ background: #fee2e2; color: #dc2626; }}
-        .recommendation {{ background: #eff6ff; border-left: 4px solid #6366f1; padding: 16px; margin: 16px 0; }}
-        .insights {{ background: #fef3c7; border-radius: 12px; padding: 24px; margin-top: 30px; }}
-        .insights h3 {{ color: #92400e; margin-top: 0; }}
-        .footer {{ margin-top: 40px; padding-top: 20px; border-top: 1px solid #e5e7eb; text-align: center; color: #9ca3af; font-size: 9pt; }}
-        @media print {{ body {{ padding: 0; }} .header {{ margin: 0 0 30px 0; }} }}
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>CV Screening Report</h1>
-        <p>{title} | {datetime.now().strftime('%B %d, %Y')}</p>
-    </div>
-    
-    <div class="summary-grid">
-        <div class="summary-card"><div class="number">{summary.get('total_candidates', '?')}</div><div class="label">Candidates</div></div>
-        <div class="summary-card"><div class="number" style="color:#10b981">{summary.get('recommended_for_interview', '?')}</div><div class="label">Recommended</div></div>
-        <div class="summary-card"><div class="number" style="color:#f59e0b">{summary.get('maybe', '?')}</div><div class="label">Maybe</div></div>
-        <div class="summary-card"><div class="number">~{summary.get('time_saved_minutes', '?')}m</div><div class="label">Time Saved</div></div>
-    </div>
-    
-    <h2>Candidate Rankings</h2>
-"""
+        # Summary table
+        story.append(Paragraph("Executive Summary", heading_style))
+        
+        summary_data = [
+            ['Total Candidates', 'Recommended', 'Maybe', 'Not Recommended', 'Time Saved'],
+            [
+                str(summary.get('total_candidates', '?')),
+                str(summary.get('recommended_for_interview', '?')),
+                str(summary.get('maybe', '?')),
+                str(summary.get('not_recommended', '?')),
+                f"~{summary.get('time_saved_minutes', '?')} min"
+            ]
+        ]
+        
+        summary_table = Table(summary_data, colWidths=[1.4*inch]*5)
+        summary_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#6366f1')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('FONTSIZE', (0, 1), (-1, -1), 14),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('TOPPADDING', (0, 1), (-1, -1), 15),
+            ('BOTTOMPADDING', (0, 1), (-1, -1), 15),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#f3f4f6')),
+            ('TEXTCOLOR', (1, 1), (1, 1), colors.HexColor('#10b981')),
+            ('TEXTCOLOR', (2, 1), (2, 1), colors.HexColor('#f59e0b')),
+            ('TEXTCOLOR', (3, 1), (3, 1), colors.HexColor('#ef4444')),
+            ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#e5e7eb')),
+            ('ROUNDEDCORNERS', [5, 5, 5, 5]),
+        ]))
+        story.append(summary_table)
+        story.append(Spacer(1, 30))
+        
+        # Candidates
+        story.append(Paragraph("Candidate Rankings", heading_style))
         
         for c in candidates:
             score = c.get('match_score', 0)
-            sc = "score-high" if score >= 70 else "score-med" if score >= 50 else "score-low"
             skills = c.get('skills_breakdown', {})
             
-            html += f"""
-    <div class="candidate">
-        <div class="candidate-header">
-            <div><span class="candidate-rank">#{c.get('rank', '?')}</span> <strong style="font-size:14pt;margin-left:12px;">{c.get('identifier', 'Unknown')}</strong></div>
-            <span class="score {sc}">{score}%</span>
-        </div>
-        <div class="skills-grid">
-            <div class="skill-box"><div class="name">Technical</div><div class="value">{skills.get('technical', {}).get('matched', '?')}/{skills.get('technical', {}).get('total', '?')}</div></div>
-            <div class="skill-box"><div class="name">Leadership</div><div class="value">{skills.get('leadership', {}).get('matched', '?')}/{skills.get('leadership', {}).get('total', '?')}</div></div>
-            <div class="skill-box"><div class="name">Soft Skills</div><div class="value">{skills.get('soft_skills', {}).get('matched', '?')}/{skills.get('soft_skills', {}).get('total', '?')}</div></div>
-            <div class="skill-box"><div class="name">Experience</div><div class="value">{c.get('experience_years', '?')} yrs</div></div>
-        </div>
-        <p><strong>Assessment:</strong> {c.get('why_this_score', '')}</p>
-        <p><strong>Strengths:</strong> {''.join([f'<span class="tag tag-green">{s}</span>' for s in c.get('strengths', [])])}</p>
-        <p><strong>Concerns:</strong> {''.join([f'<span class="tag tag-red">{s}</span>' for s in c.get('concerns', [])])}</p>
-        <div class="recommendation"><strong>Recommendation:</strong> {c.get('recommended_action', '')} | <strong>Next:</strong> {c.get('next_steps', '')}</div>
-    </div>
-"""
+            # Candidate header
+            story.append(Paragraph(f"#{c.get('rank', '?')} — {c.get('identifier', 'Unknown')}", subheading_style))
+            
+            # Score and skills table
+            score_color = '#10b981' if score >= 70 else '#f59e0b' if score >= 50 else '#ef4444'
+            
+            skills_data = [
+                ['Match Score', 'Technical', 'Leadership', 'Soft Skills', 'Experience'],
+                [
+                    f"{score}%",
+                    f"{skills.get('technical', {}).get('matched', '?')}/{skills.get('technical', {}).get('total', '?')}",
+                    f"{skills.get('leadership', {}).get('matched', '?')}/{skills.get('leadership', {}).get('total', '?')}",
+                    f"{skills.get('soft_skills', {}).get('matched', '?')}/{skills.get('soft_skills', {}).get('total', '?')}",
+                    f"{c.get('experience_years', '?')} yrs"
+                ]
+            ]
+            
+            skills_table = Table(skills_data, colWidths=[1.4*inch]*5)
+            skills_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f9fafb')),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 9),
+                ('FONTSIZE', (0, 1), (-1, -1), 12),
+                ('TEXTCOLOR', (0, 1), (0, 1), colors.HexColor(score_color)),
+                ('FONTNAME', (0, 1), (0, 1), 'Helvetica-Bold'),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+                ('TOPPADDING', (0, 0), (-1, -1), 10),
+                ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#e5e7eb')),
+            ]))
+            story.append(skills_table)
+            story.append(Spacer(1, 10))
+            
+            # Assessment
+            story.append(Paragraph(f"<b>Assessment:</b> {c.get('why_this_score', 'N/A')}", body_style))
+            
+            # Strengths
+            strengths = c.get('strengths', [])
+            if strengths:
+                story.append(Paragraph(f"<b>✓ Strengths:</b> {', '.join(strengths)}", green_style))
+            
+            # Concerns
+            concerns = c.get('concerns', [])
+            if concerns:
+                story.append(Paragraph(f"<b>⚠ Concerns:</b> {', '.join(concerns)}", red_style))
+            
+            # Recommendation
+            story.append(Paragraph(f"<b>→ Recommendation:</b> {c.get('recommended_action', 'N/A')}", body_style))
+            story.append(Paragraph(f"<b>Next Steps:</b> {c.get('next_steps', 'N/A')}", small_style))
+            
+            story.append(Spacer(1, 5))
+            story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#e5e7eb')))
+            story.append(Spacer(1, 15))
         
-        html += f"""
-    <div class="insights">
-        <h3>Batch Insights</h3>
-        <p><strong>Top Candidate:</strong> {insights.get('strongest_candidate_summary', '')}</p>
-        <p><strong>Common Gaps:</strong> {', '.join(insights.get('common_gaps', []))}</p>
-        <p><strong>Recommendation:</strong> {insights.get('hiring_recommendation', '')}</p>
-    </div>
-    <div class="footer">Generated by Sharp Screen | Sharp Human AI Suite</div>
-</body>
-</html>"""
-        return html
+        # Insights
+        if insights:
+            story.append(Paragraph("Batch Insights", heading_style))
+            story.append(Paragraph(f"<b>Top Candidate:</b> {insights.get('strongest_candidate_summary', 'N/A')}", body_style))
+            story.append(Paragraph(f"<b>Common Gaps:</b> {', '.join(insights.get('common_gaps', []))}", body_style))
+            story.append(Paragraph(f"<b>Hiring Recommendation:</b> {insights.get('hiring_recommendation', 'N/A')}", body_style))
+        
+        # Footer
+        story.append(Spacer(1, 40))
+        story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#e5e7eb')))
+        story.append(Spacer(1, 10))
+        story.append(Paragraph("Generated by Sharp Screen | Sharp Human AI Recruiting Suite", small_style))
+        story.append(Paragraph("This report is confidential and intended for internal use only.", small_style))
+        
+        doc.build(story)
+        buffer.seek(0)
+        return buffer.getvalue()
+    
+    except ImportError:
+        # Fallback: Return HTML if reportlab not installed
+        return None
     except Exception as e:
-        return f"<html><body>Error: {e}</body></html>"
+        return None
 
 def generate_csv_report(data):
     try:
@@ -501,134 +570,220 @@ def generate_csv_report(data):
         return "Error"
 
 # ============================================
-# MAIN APP CONFIG
+# DISPLAY HELPERS
+# ============================================
+
+def display_candidate_rich(c):
+    """Display a candidate with rich formatting"""
+    score = c.get('match_score', 0)
+    skills = c.get('skills_breakdown', {})
+    identifier = c.get('identifier', 'Unknown')
+    
+    # Score color
+    if score >= 70:
+        score_color = "#10b981"
+        score_bg = "rgba(16,185,129,0.1)"
+        recommendation_badge = "🟢 Recommended"
+    elif score >= 50:
+        score_color = "#f59e0b"
+        score_bg = "rgba(245,158,11,0.1)"
+        recommendation_badge = "🟡 Maybe"
+    else:
+        score_color = "#ef4444"
+        score_bg = "rgba(239,68,68,0.1)"
+        recommendation_badge = "🔴 Not Recommended"
+    
+    # Main card
+    st.markdown(f"""
+    <div style="background:#12121a;border:1px solid rgba(99,102,241,0.3);border-radius:16px;padding:24px;margin:20px 0;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+            <div style="display:flex;align-items:center;gap:12px;">
+                <span style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;padding:8px 16px;border-radius:20px;font-weight:bold;">#{c.get('rank', '?')}</span>
+                <span style="font-size:20px;font-weight:bold;color:white;">{identifier}</span>
+                <span style="background:{score_bg};color:{score_color};padding:4px 12px;border-radius:12px;font-size:12px;">{recommendation_badge}</span>
+            </div>
+            <div style="text-align:right;">
+                <span style="font-size:36px;font-weight:bold;color:{score_color};">{score}%</span>
+                <p style="color:#9ca3af;margin:0;font-size:12px;">Match Score</p>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Skills breakdown in columns
+    sk_cols = st.columns(5)
+    skill_items = [
+        ("💻 Technical", skills.get('technical', {})),
+        ("👔 Leadership", skills.get('leadership', {})),
+        ("🤝 Soft Skills", skills.get('soft_skills', {})),
+        ("🏢 Industry", skills.get('industry_experience', {})),
+        ("📅 Experience", {"value": f"{c.get('experience_years', '?')} yrs"})
+    ]
+    
+    for col, (label, skill_data) in zip(sk_cols, skill_items):
+        with col:
+            if 'value' in skill_data:
+                value = skill_data['value']
+            else:
+                matched = skill_data.get('matched', '?')
+                total = skill_data.get('total', '?')
+                value = f"{matched}/{total}"
+            
+            st.markdown(f"""
+            <div style="background:rgba(99,102,241,0.1);border-radius:12px;padding:16px;text-align:center;">
+                <p style="color:#9ca3af;margin:0;font-size:11px;">{label}</p>
+                <p style="color:white;font-size:20px;font-weight:bold;margin:4px 0;">{value}</p>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    # Assessment section
+    st.markdown("#### 📋 Assessment")
+    st.markdown(f"**Why this score:** {c.get('why_this_score', 'N/A')}")
+    
+    # Strengths and Concerns in columns
+    str_col, con_col = st.columns(2)
+    with str_col:
+        st.markdown("**✅ Strengths**")
+        for s in c.get('strengths', []):
+            st.markdown(f"<span style='background:rgba(16,185,129,0.2);color:#10b981;padding:4px 10px;border-radius:8px;margin:2px;display:inline-block;font-size:13px;'>{s}</span>", unsafe_allow_html=True)
+    
+    with con_col:
+        st.markdown("**⚠️ Concerns**")
+        for s in c.get('concerns', []):
+            st.markdown(f"<span style='background:rgba(239,68,68,0.2);color:#ef4444;padding:4px 10px;border-radius:8px;margin:2px;display:inline-block;font-size:13px;'>{s}</span>", unsafe_allow_html=True)
+    
+    # Additional info
+    info_col1, info_col2 = st.columns(2)
+    with info_col1:
+        st.markdown(f"**💰 Salary Alignment:** {c.get('salary_alignment', 'Unknown')}")
+    with info_col2:
+        ai_prob = c.get('ai_written_probability', 0)
+        ai_color = "#ef4444" if ai_prob > 50 else "#f59e0b" if ai_prob > 30 else "#10b981"
+        st.markdown(f"**🤖 AI Detection:** <span style='color:{ai_color}'>{ai_prob}%</span>", unsafe_allow_html=True)
+    
+    # Recommendation box
+    st.markdown(f"""
+    <div style="background:linear-gradient(135deg,rgba(99,102,241,0.1),rgba(139,92,246,0.1));border-left:4px solid #6366f1;padding:16px;border-radius:0 12px 12px 0;margin:16px 0;">
+        <p style="color:#a5b4fc;margin:0 0 4px 0;font-size:12px;text-transform:uppercase;">Recommended Action</p>
+        <p style="color:white;font-size:16px;font-weight:bold;margin:0;">{c.get('recommended_action', 'N/A')}</p>
+        <p style="color:#9ca3af;margin:8px 0 0 0;font-size:13px;">{c.get('next_steps', '')}</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    return identifier, score
+
+def display_hm_summary_rich(summary_text):
+    """Display hiring manager summary with rich formatting"""
+    if not summary_text:
+        return
+    
+    # Clean up any JSON artifacts
+    text = summary_text.strip()
+    if text.startswith('```'):
+        text = re.sub(r'```json?\s*', '', text)
+        text = re.sub(r'```\s*$', '', text)
+    
+    # Try to parse as JSON first
+    try:
+        data = json.loads(text)
+        # Format JSON data nicely
+        st.markdown("#### 📊 Executive Summary")
+        st.info(data.get('executive_summary', ''))
+        
+        st.markdown("#### 👥 Candidate Recommendations")
+        for cand in data.get('candidates', []):
+            with st.container():
+                st.markdown(f"**{cand.get('identifier', 'Candidate')}**")
+                st.markdown(f"• **Fit:** {cand.get('fit', cand.get('fit_assessment', 'N/A'))}")
+                st.markdown(f"• **Gaps:** {cand.get('gaps', cand.get('key_gaps', 'N/A'))}")
+                st.markdown(f"• **Action:** {cand.get('action', cand.get('recommended_action', 'N/A'))}")
+                st.markdown("---")
+        
+        st.markdown("#### 🎯 Overall Recommendation")
+        st.success(data.get('overall_recommendation', ''))
+        
+        if data.get('risk_assessment'):
+            st.markdown("#### ⚠️ Risk Assessment")
+            st.warning(data.get('risk_assessment', ''))
+    except:
+        # Display as formatted text
+        st.markdown(f"""
+        <div style="background:#12121a;border:1px solid rgba(99,102,241,0.2);border-radius:12px;padding:24px;">
+            <pre style="white-space:pre-wrap;color:#e5e5e5;font-family:inherit;margin:0;">{text}</pre>
+        </div>
+        """, unsafe_allow_html=True)
+
+# ============================================
+# MAIN APP
 # ============================================
 
 st.set_page_config(page_title="Sharp Screen", page_icon="🔍", layout="wide")
 init_session()
 check_url_auth()
 
-# COMPREHENSIVE STYLES - Fixed all icon issues
+# Styles
 st.markdown("""<style>
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap');
 
-/* Base reset */
 *, *::before, *::after { font-family: 'Nunito', sans-serif !important; box-sizing: border-box; }
 
-/* App background */
-.stApp, [data-testid="stAppViewContainer"], [data-testid="stApp"] { background: #0a0a0f !important; }
+.stApp, [data-testid="stAppViewContainer"] { background: #0a0a0f !important; }
 [data-testid="stHeader"] { background: transparent !important; }
 
-/* Sidebar */
 section[data-testid="stSidebar"] { background: #0d0d14 !important; border-right: 1px solid rgba(99,102,241,0.2); }
 section[data-testid="stSidebar"] > div { background: #0d0d14 !important; }
 section[data-testid="stSidebar"] * { color: #e5e5e5 !important; }
 
-/* CRITICAL: Hide ALL Material Icons text */
-[data-testid="stSidebar"] span[class*="material"],
-[class*="material-icons"],
-[class*="material-symbols"],
-.material-icons,
-span:contains("keyboard"),
-*[class*="icon"] { font-family: 'Nunito', sans-serif !important; }
+/* Hide orphaned text */
+section[data-testid="stSidebar"] > div > div:first-child > div:first-child { display: none !important; }
 
-/* Hide any orphaned icon text */
-.st-emotion-cache-1whx7iy, .st-emotion-cache-r421ms, .st-emotion-cache-10trblm { display: none !important; }
-
-/* Force hide keyboard text specifically */
-p:empty, span:empty { display: none !important; }
-
-/* Text colors */
 h1, h2, h3, h4, h5, h6 { color: #ffffff !important; }
 p, span, label, div, li { color: #e5e5e5; }
 
-/* Form inputs */
 .stTextInput > div > div > input,
 .stTextArea > div > div > textarea,
 .stSelectbox > div > div,
+.stMultiSelect > div > div,
 [data-baseweb="select"] > div { background: #12121a !important; border: 1px solid rgba(99,102,241,0.3) !important; color: #ffffff !important; border-radius: 8px !important; }
 
-/* Buttons */
-.stButton > button { background: linear-gradient(135deg, #6366f1, #8b5cf6) !important; color: white !important; border: none !important; border-radius: 8px !important; font-weight: 600 !important; padding: 0.5rem 1rem !important; }
-.stButton > button:hover { opacity: 0.9; transform: translateY(-1px); }
+[data-baseweb="tag"] { background: rgba(99,102,241,0.3) !important; color: white !important; }
+
+.stButton > button { background: linear-gradient(135deg, #6366f1, #8b5cf6) !important; color: white !important; border: none !important; border-radius: 8px !important; font-weight: 600 !important; }
 .stDownloadButton > button { background: #1a1a2e !important; border: 1px solid rgba(99,102,241,0.3) !important; color: white !important; }
 
-/* Tabs - completely restyle to avoid icons */
 .stTabs [data-baseweb="tab-list"] { background: transparent !important; gap: 8px; border-bottom: 1px solid rgba(99,102,241,0.2); }
 .stTabs [data-baseweb="tab"] { background: transparent !important; color: #9ca3af !important; border: none !important; border-bottom: 2px solid transparent; padding: 12px 20px !important; }
 .stTabs [aria-selected="true"] { background: transparent !important; color: #fff !important; border-bottom: 2px solid #6366f1 !important; }
-.stTabs [data-baseweb="tab-panel"] { background: transparent !important; padding-top: 20px; }
 
-/* Radio buttons */
 .stRadio > div { flex-direction: row !important; gap: 12px; flex-wrap: wrap; }
-.stRadio > div > label { background: #12121a !important; padding: 10px 16px !important; border-radius: 8px !important; border: 1px solid rgba(99,102,241,0.2) !important; cursor: pointer; }
-.stRadio > div > label:hover { border-color: rgba(99,102,241,0.5) !important; }
-div[data-baseweb="radio"] > div { background: transparent !important; }
+.stRadio > div > label { background: #12121a !important; padding: 10px 16px !important; border-radius: 8px !important; border: 1px solid rgba(99,102,241,0.2) !important; }
 
-/* Checkbox */
 .stCheckbox > label { color: #e5e5e5 !important; }
-.stCheckbox > label > span { color: #e5e5e5 !important; }
 
-/* File uploader */
 [data-testid="stFileUploader"] { background: #12121a !important; border: 1px dashed rgba(99,102,241,0.3) !important; border-radius: 8px !important; padding: 20px !important; }
-[data-testid="stFileUploader"] label { color: white !important; }
-[data-testid="stFileUploader"] small { color: #9ca3af !important; }
 
-/* Selectbox dropdown */
-[data-baseweb="popover"] { background: #12121a !important; }
-[data-baseweb="menu"] { background: #12121a !important; }
+[data-baseweb="popover"], [data-baseweb="menu"] { background: #12121a !important; }
 [role="option"] { color: #e5e5e5 !important; }
 [role="option"]:hover { background: rgba(99,102,241,0.2) !important; }
 
-/* Slider */
 .stSlider > div > div { background: rgba(99,102,241,0.3) !important; }
-.stSlider [data-baseweb="slider"] div { background: #6366f1 !important; }
 
-/* Metrics */
 [data-testid="stMetricValue"] { color: #fff !important; }
 [data-testid="stMetricLabel"] { color: #9ca3af !important; }
 
-/* Hide expander arrows completely */
-.streamlit-expanderHeader { display: none !important; }
-details summary { list-style: none !important; }
-details summary::-webkit-details-marker { display: none !important; }
-summary::marker { display: none !important; }
-
-/* Success/Error/Warning/Info */
 .stSuccess { background: rgba(16,185,129,0.1) !important; border: 1px solid #10b981 !important; }
 .stError { background: rgba(239,68,68,0.1) !important; border: 1px solid #ef4444 !important; }
 .stWarning { background: rgba(245,158,11,0.1) !important; border: 1px solid #f59e0b !important; }
 .stInfo { background: rgba(99,102,241,0.1) !important; border: 1px solid #6366f1 !important; }
 
-/* Custom components */
 .user-card { background: rgba(99,102,241,0.1); border-radius: 12px; padding: 16px; margin-bottom: 20px; }
 .metric-card { background: linear-gradient(135deg, rgba(99,102,241,0.1), rgba(139,92,246,0.1)); border: 1px solid rgba(99,102,241,0.2); border-radius: 12px; padding: 20px; text-align: center; }
-.candidate-card { background: #12121a; border: 1px solid rgba(99,102,241,0.2); border-radius: 12px; padding: 24px; margin: 16px 0; }
 .output-box { background: #12121a; border: 1px solid rgba(99,102,241,0.2); border-radius: 12px; padding: 20px; margin: 16px 0; white-space: pre-wrap; color: #e5e5e5; }
-
-/* Status badge */
 .status-badge { position: fixed; top: 70px; right: 20px; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; padding: 10px 20px; border-radius: 25px; font-weight: 600; z-index: 999; animation: pulse 2s infinite; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
-
-/* Floating feedback widget */
-.feedback-widget { position: fixed; bottom: 20px; right: 20px; z-index: 1000; }
-.feedback-btn { background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; border: none; border-radius: 50px; padding: 12px 24px; font-weight: 600; cursor: pointer; box-shadow: 0 4px 15px rgba(99,102,241,0.4); display: flex; align-items: center; gap: 8px; }
-.feedback-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(99,102,241,0.5); }
-.feedback-panel { position: fixed; bottom: 80px; right: 20px; width: 320px; background: #12121a; border: 1px solid rgba(99,102,241,0.3); border-radius: 16px; padding: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); z-index: 1001; }
-.feedback-panel h4 { color: white; margin: 0 0 16px 0; }
-.feedback-close { position: absolute; top: 12px; right: 12px; background: none; border: none; color: #9ca3af; cursor: pointer; font-size: 18px; }
-
-/* Compare table */
-.compare-table { width: 100%; border-collapse: collapse; margin: 16px 0; }
-.compare-table th, .compare-table td { border: 1px solid rgba(99,102,241,0.2); padding: 12px; text-align: center; color: #e5e5e5; }
-.compare-table th { background: rgba(99,102,241,0.2); }
-.compare-table tr:hover { background: rgba(99,102,241,0.1); }
-
-/* Filter bar */
-.filter-bar { background: #12121a; border: 1px solid rgba(99,102,241,0.2); border-radius: 8px; padding: 16px; margin-bottom: 20px; }
 </style>""", unsafe_allow_html=True)
 
-# Auth screen
+# Auth
 if not st.session_state.authenticated:
     c1, c2, c3 = st.columns([1, 1.2, 1])
     with c2:
@@ -674,11 +829,10 @@ if not st.session_state.authenticated:
 # AUTHENTICATED UI
 # ============================================
 
-# Working status
 if st.session_state.working_on:
     st.markdown(f'<div class="status-badge">{st.session_state.working_on}</div>', unsafe_allow_html=True)
 
-# Sidebar - CLEAN, no feedback here
+# Sidebar with ICONS
 with st.sidebar:
     st.markdown(f"""<div class="user-card">
         <p style="color:#9ca3af;margin:0;font-size:12px;">Logged in as</p>
@@ -687,42 +841,28 @@ with st.sidebar:
     </div>""", unsafe_allow_html=True)
     
     st.markdown("**Apps**")
-    for key, label in [("portal","Portal"),("jd","JD Writer"),("screen","CV Screener"),("interview","Interview"),("source","Sourcing"),("content","Content"),("sales","Sales"),("reach","Reach"),("assistant","Assistant")]:
+    
+    # Navigation with icons
+    apps = [
+        ("portal", "🏠 Portal"), ("jd", "📝 JD Writer"), ("screen", "🔍 CV Screener"),
+        ("interview", "🎯 Interview"), ("source", "🎣 Sourcing"), ("content", "✍️ Content"),
+        ("sales", "💰 Sales"), ("reach", "🚀 Reach"), ("assistant", "🤖 Assistant"),
+    ]
+    
+    for key, label in apps:
         if key == "screen":
-            st.markdown(f"<div style='background:rgba(99,102,241,0.3);padding:10px;border-radius:8px;text-align:center;margin:4px 0;'><strong>{label}</strong></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='background:linear-gradient(135deg,#6366f1,#8b5cf6);padding:10px 16px;border-radius:8px;text-align:center;margin:4px 0;color:white;font-weight:600;'>{label} ◀</div>", unsafe_allow_html=True)
         else:
             st.link_button(label, build_app_url(key), use_container_width=True)
     
     if st.session_state.get("is_god"):
         st.markdown("---")
-        st.link_button("Admin", build_app_url("admin"), use_container_width=True)
+        st.link_button("⚙️ Admin", build_app_url("admin"), use_container_width=True)
     
     st.markdown("---")
-    if st.button("Logout", use_container_width=True):
+    if st.button("🚪 Logout", use_container_width=True):
         for k in list(st.session_state.keys()): del st.session_state[k]
         st.rerun()
-
-# FLOATING FEEDBACK WIDGET (bottom right)
-feedback_html = """
-<div class="feedback-widget">
-    <button class="feedback-btn" onclick="document.getElementById('feedback-panel').style.display = document.getElementById('feedback-panel').style.display === 'none' ? 'block' : 'none';">
-        💬 Feedback
-    </button>
-</div>
-"""
-st.markdown(feedback_html, unsafe_allow_html=True)
-
-# Feedback form in main area (positioned at bottom)
-with st.container():
-    fb_col1, fb_col2, fb_col3 = st.columns([2, 1, 1])
-    with fb_col3:
-        if st.checkbox("Send Feedback", key="show_fb"):
-            fb_type = st.selectbox("Type", ["Bug", "Feature", "General"], key="fb_type", label_visibility="collapsed")
-            fb_msg = st.text_area("Message", height=100, key="fb_msg", placeholder="Your feedback...", label_visibility="collapsed")
-            if st.button("Submit Feedback", key="fb_submit"):
-                if fb_msg:
-                    submit_feedback("screen", fb_type.lower(), fb_msg)
-                    st.success("Thanks!")
 
 # Header
 st.markdown("""<div style="display:flex;align-items:center;gap:16px;padding:20px 0;border-bottom:1px solid rgba(99,102,241,0.2);margin-bottom:30px;">
@@ -731,79 +871,78 @@ st.markdown("""<div style="display:flex;align-items:center;gap:16px;padding:20px
 </div>""", unsafe_allow_html=True)
 
 # Tabs
-tab_screen, tab_blind, tab_salary = st.tabs(["Screen & Rank", "Blind Resume", "Salary Estimator"])
+tab_screen, tab_blind, tab_salary = st.tabs(["🔍 Screen & Rank", "👤 Blind Resume", "💰 Salary Estimator"])
 
 with tab_screen:
-    # JD Input
-    st.markdown("### Job Description")
-    jd_src = st.radio("Source:", ["Paste JD", "From History", "Upload File"], horizontal=True, key="jd_src", label_visibility="collapsed")
+    # Input section
+    st.markdown("### 📋 Job Description")
+    jd_src = st.radio("Source:", ["📝 Paste", "📜 History", "📄 Upload"], horizontal=True, key="jd_src")
     
     jd_text = ""
     jd_id = None
     
-    if jd_src == "From History":
+    if jd_src == "📜 History":
         history = get_jd_history(20)
         if history:
             opts = {f"{j['job_title']} ({j['created_at'][:10]})": j for j in history}
-            sel = st.selectbox("Select:", list(opts.keys()), label_visibility="collapsed")
+            sel = st.selectbox("Select:", list(opts.keys()))
             if sel:
                 jd_text = opts[sel].get('generated_jd', '')
                 jd_id = opts[sel].get('id')
-                st.success(f"Loaded: {opts[sel].get('job_title')}")
+                st.success(f"✅ Loaded: {opts[sel].get('job_title')}")
         else:
             st.info("No saved JDs")
-            jd_text = st.text_area("Paste JD:", height=120, label_visibility="collapsed")
-    elif jd_src == "Upload File":
-        f = st.file_uploader("Upload JD", type=['pdf', 'docx', 'txt'], label_visibility="collapsed")
+            jd_text = st.text_area("Paste JD:", height=120)
+    elif jd_src == "📄 Upload":
+        f = st.file_uploader("Upload JD", type=['pdf', 'docx', 'txt'])
         if f:
             jd_text = extract_text_from_file(f)
-            st.success(f"Loaded {f.name}")
+            st.success(f"✅ Loaded {f.name}")
     else:
         jd_text = st.text_area("Paste Job Description:", height=150, placeholder="Paste job description here...")
     
     st.markdown("---")
     
-    # CV Input
-    st.markdown("### Candidate CVs")
-    cv_src = st.radio("Source:", ["Paste CVs", "Upload Files", "JSON/ATS"], horizontal=True, key="cv_src", label_visibility="collapsed")
+    st.markdown("### 📄 Candidate CVs")
+    cv_src = st.radio("Source:", ["📝 Paste", "📁 Upload", "🔗 JSON/ATS"], horizontal=True, key="cv_src")
     
     cvs_text = ""
-    if cv_src == "Upload Files":
-        files = st.file_uploader("Upload CVs", type=['pdf', 'docx', 'txt'], accept_multiple_files=True, label_visibility="collapsed")
+    if cv_src == "📁 Upload":
+        files = st.file_uploader("Upload CVs", type=['pdf', 'docx', 'txt'], accept_multiple_files=True)
         if files:
-            st.success(f"{len(files)} files uploaded")
+            st.success(f"📎 {len(files)} files uploaded")
             cvs_text = "\n\n---\n\n".join([f"=== {f.name} ===\n{extract_text_from_file(f)}" for f in files])
-    elif cv_src == "JSON/ATS":
-        json_in = st.text_area("Paste JSON:", height=120, label_visibility="collapsed")
+    elif cv_src == "🔗 JSON/ATS":
+        json_in = st.text_area("Paste JSON:", height=120)
         if json_in:
             cands = parse_json_candidates(json_in)
             if cands:
-                st.success(f"{len(cands)} candidates parsed")
+                st.success(f"✅ {len(cands)} candidates parsed")
                 cvs_text = "\n\n---\n\n".join([json.dumps(c, indent=2) for c in cands])
     else:
         cvs_text = st.text_area("Paste CVs (separate with ---):", height=180, placeholder="CV 1...\n\n---\n\nCV 2...")
     
     st.markdown("---")
     
-    # Options
-    st.markdown("### Options")
+    st.markdown("### ⚙️ Options")
     c1, c2, c3, c4 = st.columns(4)
-    with c1: bias_free = st.checkbox("Bias-Free", value=True)
-    with c2: ai_detect = st.checkbox("AI Detection", value=True)
-    with c3: salary_est = st.checkbox("Salary Est.", value=True)
-    with c4: save_hist = st.checkbox("Save Results", value=True)
+    with c1: bias_free = st.checkbox("🔒 Bias-Free", value=True)
+    with c2: ai_detect = st.checkbox("🤖 AI Detection", value=True)
+    with c3: salary_est = st.checkbox("💰 Salary Est.", value=True)
+    with c4: save_hist = st.checkbox("💾 Save Results", value=True)
     
-    if st.button("Screen Candidates", type="primary", use_container_width=True):
+    if st.button("🔍 Screen Candidates", type="primary", use_container_width=True):
         if not jd_text: st.warning("Provide JD")
         elif not cvs_text: st.warning("Provide CVs")
         else:
-            st.session_state.working_on = "Analyzing..."
-            with st.spinner("Screening candidates..."):
+            st.session_state.working_on = "Analyzing candidates..."
+            with st.spinner("Screening..."):
                 result, tokens = screen_candidates(jd_text, cvs_text, {'bias_free': bias_free, 'ai_detection': ai_detect, 'salary_estimate': salary_est})
                 st.session_state.working_on = None
                 if not result.startswith("Error"):
                     st.session_state.screening_results = result
                     st.session_state.selected_candidates = []
+                    st.session_state.hm_summary = None
                     if save_hist:
                         save_screen_history(jd_id, jd_text, cvs_text, result, cvs_text.count('---')+1, tokens)
                     st.rerun()
@@ -817,77 +956,56 @@ with tab_screen:
         try:
             match = re.search(r'```json\s*(.*?)\s*```', st.session_state.screening_results, re.DOTALL)
             data = json.loads(match.group(1) if match else st.session_state.screening_results)
+            st.session_state.parsed_data = data
             
             summary = data.get('screening_summary', {})
             candidates = data.get('candidates', [])
             insights = data.get('batch_insights', {})
             
-            # Summary
-            st.markdown("### Results")
+            # Summary metrics
+            st.markdown("### 📊 Results Summary")
             cols = st.columns(5)
-            for col, (label, val, color) in zip(cols, [
-                ("Candidates", summary.get('total_candidates', '?'), "#fff"),
+            metrics = [
+                ("Total", summary.get('total_candidates', '?'), "#fff"),
                 ("Recommended", summary.get('recommended_for_interview', '?'), "#10b981"),
                 ("Maybe", summary.get('maybe', '?'), "#f59e0b"),
                 ("Time Saved", f"~{summary.get('time_saved_minutes', '?')}m", "#6366f1"),
-                ("Bias Score", f"{summary.get('bias_mitigation_score', '?')}", "#8b5cf6")
-            ]):
+                ("Bias Score", f"{summary.get('bias_mitigation_score', '?')}/100", "#8b5cf6")
+            ]
+            for col, (label, val, color) in zip(cols, metrics):
                 with col:
                     st.markdown(f'<div class="metric-card"><p style="color:#9ca3af;margin:0;font-size:11px;">{label}</p><p style="color:{color};font-size:24px;font-weight:bold;margin:0;">{val}</p></div>', unsafe_allow_html=True)
             
             # Filters
-            st.markdown("### Filter & Sort")
+            st.markdown("### 🔍 Filter & Sort")
             f1, f2, f3, f4 = st.columns(4)
             with f1: min_score = st.slider("Min Score", 0, 100, 0)
             with f2: salary_filter = st.selectbox("Salary", ["All", "Within Range", "Above", "Below"])
-            with f3: sort_by = st.selectbox("Sort", ["Rank", "Score", "Experience", "AI Score"])
+            with f3: sort_by = st.selectbox("Sort", ["Rank", "Score", "Experience"])
             with f4: compare_mode = st.checkbox("Compare Mode")
             
-            # Apply filters
+            # Filter
             filtered = [c for c in candidates if c.get('match_score', 0) >= min_score]
             if salary_filter != "All":
                 filtered = [c for c in filtered if salary_filter.lower() in c.get('salary_alignment', '').lower()]
             
             if sort_by == "Score": filtered = sorted(filtered, key=lambda x: x.get('match_score', 0), reverse=True)
             elif sort_by == "Experience": filtered = sorted(filtered, key=lambda x: x.get('experience_years', 0), reverse=True)
-            elif sort_by == "AI Score": filtered = sorted(filtered, key=lambda x: x.get('ai_written_probability', 0))
             
             # Compare
             if compare_mode and len(st.session_state.selected_candidates) >= 2:
-                if st.button(f"Compare {len(st.session_state.selected_candidates)} Selected"):
+                if st.button(f"📊 Compare {len(st.session_state.selected_candidates)} Selected"):
                     st.session_state.working_on = "Comparing..."
                     selected_data = [c for c in candidates if c.get('identifier') in st.session_state.selected_candidates]
                     result, _ = compare_candidates(selected_data)
                     st.session_state.working_on = None
                     st.session_state.comparison_result = result
             
-            if st.session_state.get('comparison_result'):
-                st.markdown("### Comparison")
-                try:
-                    comp_match = re.search(r'```json\s*(.*?)\s*```', st.session_state.comparison_result, re.DOTALL)
-                    comp_data = json.loads(comp_match.group(1) if comp_match else st.session_state.comparison_result)
-                    table = comp_data.get('comparison_table', {})
-                    if table.get('rows'):
-                        html_table = "<table class='compare-table'><tr>" + "".join([f"<th>{h}</th>" for h in table.get('headers', [])]) + "</tr>"
-                        for row in table.get('rows', []):
-                            html_table += "<tr>" + "".join([f"<td>{cell}</td>" for cell in row]) + "</tr>"
-                        html_table += "</table>"
-                        st.markdown(html_table, unsafe_allow_html=True)
-                    st.info(f"**Winner:** {comp_data.get('winner_recommendation', '')}")
-                except:
-                    st.markdown(f'<div class="output-box">{st.session_state.comparison_result}</div>', unsafe_allow_html=True)
-                if st.button("Clear Comparison"):
-                    st.session_state.comparison_result = None
-                    st.session_state.selected_candidates = []
-                    st.rerun()
-            
             # Candidates
-            st.markdown(f"### Candidates ({len(filtered)})")
+            st.markdown(f"### 👥 Candidates ({len(filtered)})")
+            
             for c in filtered:
-                score = c.get('match_score', 0)
-                color = "#10b981" if score >= 70 else "#f59e0b" if score >= 50 else "#ef4444"
                 identifier = c.get('identifier', 'Unknown')
-                skills = c.get('skills_breakdown', {})
                 
                 if compare_mode:
                     is_sel = identifier in st.session_state.selected_candidates
@@ -898,59 +1016,44 @@ with tab_screen:
                         if identifier in st.session_state.selected_candidates:
                             st.session_state.selected_candidates.remove(identifier)
                 
-                st.markdown(f"""<div class="candidate-card">
-                    <div style="display:flex;justify-content:space-between;align-items:center;">
-                        <div><span style="background:#6366f1;color:#fff;padding:4px 12px;border-radius:20px;">#{c.get('rank')}</span> <strong style="margin-left:12px;">{identifier}</strong></div>
-                        <span style="font-size:28px;font-weight:bold;color:{color};">{score}%</span>
-                    </div>
-                </div>""", unsafe_allow_html=True)
+                # Rich display
+                display_candidate_rich(c)
                 
-                # Skills
-                sk1, sk2, sk3, sk4 = st.columns(4)
-                with sk1: st.metric("Technical", f"{skills.get('technical',{}).get('matched','?')}/{skills.get('technical',{}).get('total','?')}")
-                with sk2: st.metric("Leadership", f"{skills.get('leadership',{}).get('matched','?')}/{skills.get('leadership',{}).get('total','?')}")
-                with sk3: st.metric("Soft Skills", f"{skills.get('soft_skills',{}).get('matched','?')}/{skills.get('soft_skills',{}).get('total','?')}")
-                with sk4: st.metric("Experience", f"{c.get('experience_years','?')} yrs")
-                
-                st.markdown(f"**Why:** {c.get('why_this_score', '')}")
-                st.markdown(f"**Strengths:** {', '.join(c.get('strengths', []))}")
-                st.markdown(f"**Concerns:** {', '.join(c.get('concerns', []))}")
-                
-                # Status & Actions
-                current_status = st.session_state.candidate_statuses.get(identifier, "Reviewing")
+                # Action buttons
+                score = c.get('match_score', 0)
                 col_st, col_act = st.columns([1, 3])
                 with col_st:
+                    current_status = st.session_state.candidate_statuses.get(identifier, "Reviewing")
                     new_status = st.selectbox("Status", ["Reviewing", "Contacted", "Phone Screen", "Assessment", "Rejected", "Hired"], 
                         index=["Reviewing", "Contacted", "Phone Screen", "Assessment", "Rejected", "Hired"].index(current_status), key=f"st_{identifier}")
                     if new_status != current_status:
                         st.session_state.candidate_statuses[identifier] = new_status
                 
                 with col_act:
-                    action = c.get('recommended_action', '')
                     bc1, bc2, bc3, bc4 = st.columns(4)
                     if score >= 70:
                         with bc1:
-                            if st.button("Phone Screen", key=f"ps_{identifier}"):
+                            if st.button("📧 Phone Screen", key=f"ps_{identifier}"):
                                 st.session_state.working_on = "Drafting..."
                                 email, _ = generate_email_template(c, "phone_screen", jd_text[:100])
                                 st.session_state.working_on = None
                                 st.session_state[f"email_{identifier}"] = email
                     if 50 <= score < 70:
                         with bc2:
-                            if st.button("Skills Test", key=f"sk_{identifier}"):
+                            if st.button("📝 Skills Test", key=f"sk_{identifier}"):
                                 st.session_state.working_on = "Drafting..."
                                 email, _ = generate_email_template(c, "skills_test", jd_text[:100])
                                 st.session_state.working_on = None
                                 st.session_state[f"email_{identifier}"] = email
                     if score < 50:
                         with bc3:
-                            if st.button("Rejection", key=f"rej_{identifier}"):
+                            if st.button("❌ Rejection", key=f"rej_{identifier}"):
                                 st.session_state.working_on = "Drafting..."
                                 email, _ = generate_email_template(c, "rejection", jd_text[:100])
                                 st.session_state.working_on = None
                                 st.session_state[f"email_{identifier}"] = email
                     with bc4:
-                        if st.button("LinkedIn", key=f"li_{identifier}"):
+                        if st.button("💼 LinkedIn", key=f"li_{identifier}"):
                             st.session_state.working_on = "Drafting..."
                             msg, _ = generate_email_template(c, "linkedin", jd_text[:100])
                             st.session_state.working_on = None
@@ -965,61 +1068,67 @@ with tab_screen:
                 st.markdown("---")
             
             # Batch Actions
-            st.markdown("### Batch Actions")
-            ba1, ba2 = st.columns(2)
-            with ba1:
-                if st.button("Generate HM Summary", use_container_width=True):
-                    st.session_state.working_on = "Generating..."
-                    result, _ = generate_hiring_manager_summary(candidates, bias_free)
-                    st.session_state.working_on = None
-                    st.session_state['hm_summary'] = result
+            st.markdown("### 📋 Batch Actions")
+            if st.button("📊 Generate Hiring Manager Summary", use_container_width=True):
+                st.session_state.working_on = "Generating summary..."
+                result, _ = generate_hiring_manager_summary(candidates, bias_free)
+                st.session_state.working_on = None
+                st.session_state.hm_summary = result
+                st.rerun()
             
+            # HM Summary with rich display
             if st.session_state.get('hm_summary'):
-                st.markdown("#### Hiring Manager Summary")
-                st.markdown(f'<div class="output-box">{st.session_state.hm_summary}</div>', unsafe_allow_html=True)
+                st.markdown("### 👔 Hiring Manager Summary")
+                display_hm_summary_rich(st.session_state.hm_summary)
             
             # Export
-            st.markdown("### Export")
+            st.markdown("### 📥 Export Reports")
             e1, e2, e3, e4 = st.columns(4)
+            
             with e1:
-                pdf_html = generate_pdf_report(data, jd_text[:50] if jd_text else "Report")
-                st.download_button("PDF Report", pdf_html, "screening_report.html", "text/html", use_container_width=True)
+                pdf_bytes = generate_pdf_bytes(data, jd_text[:50] if jd_text else "Report")
+                if pdf_bytes:
+                    st.download_button("📄 PDF Report", pdf_bytes, "screening_report.pdf", "application/pdf", use_container_width=True)
+                else:
+                    st.warning("PDF requires reportlab")
             with e2:
-                st.download_button("CSV", generate_csv_report(data), "report.csv", "text/csv", use_container_width=True)
+                st.download_button("📊 CSV", generate_csv_report(data), "report.csv", "text/csv", use_container_width=True)
             with e3:
-                st.download_button("JSON", json.dumps(data, indent=2), "data.json", "application/json", use_container_width=True)
+                st.download_button("🔗 JSON", json.dumps(data, indent=2), "data.json", "application/json", use_container_width=True)
             with e4:
-                if st.button("New Screening", use_container_width=True):
+                if st.button("🔄 New Screening", use_container_width=True):
                     st.session_state.screening_results = None
                     st.session_state.selected_candidates = []
                     st.session_state.comparison_result = None
+                    st.session_state.hm_summary = None
                     st.rerun()
             
             # Insights
             if insights:
-                st.markdown("### Insights")
-                st.info(f"**Top:** {insights.get('strongest_candidate_summary', '')}")
-                st.warning(f"**Gaps:** {', '.join(insights.get('common_gaps', []))}")
-                st.success(f"**Recommendation:** {insights.get('hiring_recommendation', '')}")
+                st.markdown("### 💡 Batch Insights")
+                st.info(f"**🏆 Top Candidate:** {insights.get('strongest_candidate_summary', '')}")
+                st.warning(f"**📋 Common Gaps:** {', '.join(insights.get('common_gaps', []))}")
+                st.success(f"**✅ Recommendation:** {insights.get('hiring_recommendation', '')}")
         
         except Exception as e:
+            st.error(f"Error parsing results: {e}")
             st.markdown(f'<div class="output-box">{st.session_state.screening_results}</div>', unsafe_allow_html=True)
 
 with tab_blind:
-    st.markdown("### Blind Resume Anonymization")
+    st.markdown("### 👤 Blind Resume Anonymization")
     c1, c2 = st.columns([2, 1])
     with c1:
-        src = st.radio("Source:", ["Paste", "Upload"], horizontal=True, key="anon_src")
-        if src == "Upload":
+        src = st.radio("Source:", ["📝 Paste", "📄 Upload"], horizontal=True, key="anon_src")
+        if src == "📄 Upload":
             f = st.file_uploader("Upload CV", type=['pdf', 'docx', 'txt'], key="anon_file")
             resume = extract_text_from_file(f) if f else ""
         else:
             resume = st.text_area("Paste resume:", height=250)
     with c2:
-        time_based = st.checkbox("Time-based dates")
+        time_based = st.checkbox("⏱️ Time-based dates")
         st.caption("Removes: names, emails, phones, addresses, universities, companies")
     
-    if st.button("Anonymize", type="primary", use_container_width=True):
+    if st.button("👤 Anonymize", type="primary", use_container_width=True):
         if resume:
             st.session_state.working_on = "Anonymizing..."
             result, _ = anonymize_cv(resume, {'time_based': time_based})
@@ -1036,18 +1145,18 @@ with tab_blind:
             data = json.loads(match.group(1) if match else st.session_state.anonymized_result)
             st.metric("Confidence", f"{data.get('anonymization_score', 0)}%")
             st.markdown(f'<div class="output-box">{data.get("anonymized_cv", "")}</div>', unsafe_allow_html=True)
-            st.download_button("Download", data.get("anonymized_cv", ""), "anonymized.txt", use_container_width=True)
+            st.download_button("📥 Download", data.get("anonymized_cv", ""), "anonymized.txt", use_container_width=True)
         except:
             st.markdown(f'<div class="output-box">{st.session_state.anonymized_result}</div>', unsafe_allow_html=True)
 
 with tab_salary:
-    st.markdown("### Salary Estimator")
+    st.markdown("### 💰 Salary Estimator")
     c1, c2 = st.columns(2)
     with c1: sal_jd = st.text_area("Job Description:", height=150, key="sal_jd")
     with c2: sal_cv = st.text_area("Candidate CV:", height=150, key="sal_cv")
     location = st.selectbox("Market:", ["US - National", "US - SF Bay Area", "US - NYC", "US - Remote", "UK - London", "EU", "Canada"])
     
-    if st.button("Estimate Salary", type="primary", use_container_width=True):
+    if st.button("💰 Estimate Salary", type="primary", use_container_width=True):
         if sal_jd and sal_cv:
             st.session_state.working_on = "Estimating..."
             result, _ = estimate_salary(sal_cv, sal_jd, location)
@@ -1056,3 +1165,16 @@ with tab_salary:
                 st.markdown(f'<div class="output-box">{result}</div>', unsafe_allow_html=True)
             else:
                 st.error(result)
+
+# Floating Feedback
+st.markdown("---")
+with st.container():
+    fb_col1, fb_col2, fb_col3 = st.columns([2, 1, 1])
+    with fb_col3:
+        if st.checkbox("💬 Feedback", key="show_fb"):
+            fb_type = st.selectbox("Type", ["Bug", "Feature", "General"], key="fb_type")
+            fb_msg = st.text_area("Message", height=80, key="fb_msg")
+            if st.button("Submit", key="fb_submit"):
+                if fb_msg:
+                    submit_feedback("screen", fb_type.lower(), fb_msg)
+                    st.success("Thanks!")
