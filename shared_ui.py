@@ -49,16 +49,19 @@ EXTERNAL_LINKS = {
 # ===========================================
 
 COLORS = {
-    # Primary palette
-    "primary": "#6366f1",
-    "primary_light": "#818cf8",
-    "primary_dark": "#4f46e5",
+    # Primary palette (matching website pink/purple)
+    "primary": "#db2777",       # Pink from website
+    "primary_light": "#ec4899",
+    "primary_dark": "#be185d",
     "secondary": "#8b5cf6",
+    "accent_blue": "#3b82f6",   # Blue for outlines
     
-    # Background
-    "bg_dark": "#0a0a0f",
-    "bg_card": "#12121a",
-    "bg_hover": "#1a1a2e",
+    # Background (matching website - unified dark)
+    "bg_dark": "#0f0f14",       # Main background - matches website
+    "bg_card": "#0f0f14",       # Same as bg for unified look
+    "bg_sidebar": "#0f0f14",    # Sidebar same color
+    "bg_input": "#1a1a24",      # Slightly lighter for inputs
+    "bg_hover": "#1f1f2e",      # Hover state
     
     # Text
     "text_primary": "#ffffff",
@@ -72,9 +75,9 @@ COLORS = {
     "error": "#ef4444",
     "info": "#3b82f6",
     
-    # Borders
-    "border": "rgba(99, 102, 241, 0.2)",
-    "border_light": "rgba(99, 102, 241, 0.3)",
+    # Borders (subtle)
+    "border": "rgba(255, 255, 255, 0.1)",
+    "border_light": "rgba(255, 255, 255, 0.15)",
 }
 
 TYPOGRAPHY = {
@@ -118,9 +121,28 @@ def get_global_css():
         font-family: {TYPOGRAPHY["font_family"]} !important;
     }}
     
-    /* ========== BACKGROUND ========== */
-    .stApp {{
-        background: linear-gradient(135deg, {COLORS["bg_dark"]} 0%, {COLORS["bg_hover"]} 100%);
+    /* ========== BACKGROUND - Unified dark like website ========== */
+    .stApp, [data-testid="stAppViewContainer"], .main {{
+        background: {COLORS["bg_dark"]} !important;
+    }}
+    
+    [data-testid="stHeader"] {{
+        background: transparent !important;
+    }}
+    
+    /* ========== SIDEBAR - Same background ========== */
+    section[data-testid="stSidebar"] {{
+        background: {COLORS["bg_dark"]} !important;
+        border-right: 1px solid {COLORS["border"]} !important;
+    }}
+    
+    section[data-testid="stSidebar"] > div {{
+        background: {COLORS["bg_dark"]} !important;
+    }}
+    
+    /* Hide default sidebar collapse button */
+    section[data-testid="stSidebar"] > div > div:first-child > div:first-child {{
+        display: none !important;
     }}
     
     /* ========== TYPOGRAPHY ========== */
@@ -146,9 +168,9 @@ def get_global_css():
     .stTextArea > div > div > textarea,
     .stSelectbox > div > div > div,
     .stMultiselect > div > div > div {{
-        background: {COLORS["bg_card"]} !important;
+        background: {COLORS["bg_input"]} !important;
         border: 1px solid {COLORS["border_light"]} !important;
-        border-radius: 10px !important;
+        border-radius: 8px !important;
         color: {COLORS["text_primary"]} !important;
         font-size: {TYPOGRAPHY["size_base"]} !important;
     }}
@@ -156,15 +178,27 @@ def get_global_css():
     .stTextInput > div > div > input:focus,
     .stTextArea > div > div > textarea:focus {{
         border-color: {COLORS["primary"]} !important;
-        box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2) !important;
+        box-shadow: 0 0 0 2px rgba(219, 39, 119, 0.2) !important;
+    }}
+    
+    /* Select dropdowns */
+    [data-baseweb="select"] > div {{
+        background: {COLORS["bg_input"]} !important;
+        border-color: {COLORS["border_light"]} !important;
+    }}
+    
+    /* Tags in multiselect */
+    [data-baseweb="tag"] {{
+        background: {COLORS["primary"]} !important;
+        color: white !important;
     }}
     
     /* ========== BUTTONS ========== */
     .stButton > button {{
-        background: linear-gradient(135deg, {COLORS["primary"]} 0%, {COLORS["secondary"]} 100%) !important;
+        background: {COLORS["primary"]} !important;
         color: {COLORS["text_primary"]} !important;
         border: none !important;
-        border-radius: 10px !important;
+        border-radius: 8px !important;
         font-weight: 600 !important;
         font-size: {TYPOGRAPHY["size_base"]} !important;
         padding: 12px 24px !important;
@@ -172,22 +206,23 @@ def get_global_css():
     }}
     
     .stButton > button:hover {{
+        background: {COLORS["primary_dark"]} !important;
         transform: translateY(-1px) !important;
-        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4) !important;
+        box-shadow: 0 4px 12px rgba(219, 39, 119, 0.4) !important;
     }}
     
     .stButton > button:disabled {{
-        background: {COLORS["bg_card"]} !important;
+        background: {COLORS["bg_input"]} !important;
         color: {COLORS["text_muted"]} !important;
         opacity: 0.6 !important;
     }}
     
     /* Secondary/Link buttons */
     .stLinkButton > a {{
-        background: {COLORS["bg_card"]} !important;
+        background: {COLORS["bg_input"]} !important;
         border: 1px solid {COLORS["border"]} !important;
         color: {COLORS["text_secondary"]} !important;
-        border-radius: 10px !important;
+        border-radius: 8px !important;
         font-size: {TYPOGRAPHY["size_base"]} !important;
     }}
     
@@ -435,7 +470,7 @@ def get_global_css():
     
     /* ========== TOP BANNER ========== */
     .top-banner {{
-        background: #1a1a2e;
+        background: {COLORS["bg_dark"]};
         border-bottom: 1px solid {COLORS["border"]};
         padding: 12px 24px;
         display: flex;
@@ -753,7 +788,7 @@ def render_sidebar(
             <p style="color: {COLORS["text_primary"]}; margin: 6px 0 4px; font-weight: 600; font-size: 14px;">{user_email}</p>
             <span style="
                 display: inline-block;
-                background: {'linear-gradient(135deg, #6366f1, #8b5cf6)' if user_plan == 'god' else 'rgba(99, 102, 241, 0.2)'};
+                background: {'linear-gradient(135deg, #db2777, #8b5cf6)' if user_plan == 'god' else 'rgba(219, 39, 119, 0.2)'};
                 color: {'white' if user_plan == 'god' else COLORS['primary']};
                 padding: 2px 10px;
                 border-radius: 12px;
