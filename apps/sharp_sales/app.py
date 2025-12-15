@@ -1,4 +1,4 @@
-"""Sharp Sales - AI Sales Call Analysis with Stage-Based Scoring"""
+"""Sharp Sales - AI Sales Call Analysis (Single Screen)"""
 import streamlit as st
 import os
 import requests
@@ -19,26 +19,36 @@ APP_URLS = {"portal": "https://demo.sharphuman.com", "jd": "https://jd.sharphuma
 
 CALL_FRAMEWORKS = {
     "discovery": {"name": "Discovery Call", "stages": {
-        "opening": {"name": "Opening", "weight": 15, "skills": [{"id": "rapport", "name": "Rapport Building"}, {"id": "frame", "name": "Setting the Frame"}, {"id": "permission", "name": "Permission to Proceed"}]},
-        "discovery": {"name": "Discovery", "weight": 40, "skills": [{"id": "pain", "name": "Uncovering Pain & Goals"}, {"id": "probing", "name": "Probing Questions"}, {"id": "impact", "name": "Cost of Inaction"}, {"id": "timeline", "name": "Timeline & Urgency"}, {"id": "budget", "name": "Budget Discovery"}]},
-        "qualify": {"name": "Qualification", "weight": 20, "skills": [{"id": "authority", "name": "Decision Authority"}, {"id": "process", "name": "Buying Process"}, {"id": "competition", "name": "Competitive Landscape"}]},
-        "close": {"name": "Close", "weight": 25, "skills": [{"id": "summary", "name": "Summary & Recap"}, {"id": "next_steps", "name": "Clear Next Steps"}, {"id": "commitment", "name": "Getting Commitment"}, {"id": "stakeholders", "name": "Multi-threading"}]}
+        "opening": {"name": "Opening", "weight": 15, "skills": ["Rapport Building", "Setting the Frame", "Permission to Proceed"]},
+        "discovery": {"name": "Discovery", "weight": 40, "skills": ["Uncovering Pain & Goals", "Probing Questions", "Cost of Inaction", "Timeline & Urgency", "Budget Discovery"]},
+        "qualify": {"name": "Qualification", "weight": 20, "skills": ["Decision Authority", "Buying Process", "Competitive Landscape"]},
+        "close": {"name": "Close", "weight": 25, "skills": ["Summary & Recap", "Clear Next Steps", "Getting Commitment", "Multi-threading"]}
     }},
-    "demo": {"name": "Demo Call", "stages": {
-        "setup": {"name": "Setup", "weight": 15, "skills": [{"id": "recap", "name": "Discovery Recap"}, {"id": "agenda", "name": "Demo Agenda"}, {"id": "attendees", "name": "Attendee Check"}]},
-        "demo": {"name": "Demonstration", "weight": 40, "skills": [{"id": "tailoring", "name": "Tailored Demo"}, {"id": "storytelling", "name": "Storytelling"}, {"id": "engagement", "name": "Audience Engagement"}, {"id": "objections", "name": "Objection Handling"}]},
-        "value": {"name": "Value", "weight": 20, "skills": [{"id": "roi", "name": "ROI Discussion"}, {"id": "diff", "name": "Differentiation"}, {"id": "proof", "name": "Social Proof"}]},
-        "close": {"name": "Close", "weight": 25, "skills": [{"id": "temp", "name": "Temperature Check"}, {"id": "concerns", "name": "Surfacing Concerns"}, {"id": "next", "name": "Next Steps"}]}
+    "demo": {"name": "Demo/Presentation", "stages": {
+        "setup": {"name": "Setup", "weight": 15, "skills": ["Discovery Recap", "Demo Agenda", "Attendee Check"]},
+        "demo": {"name": "Demonstration", "weight": 40, "skills": ["Tailored Demo", "Storytelling", "Audience Engagement", "Objection Handling"]},
+        "value": {"name": "Value", "weight": 20, "skills": ["ROI Discussion", "Differentiation", "Social Proof"]},
+        "close": {"name": "Close", "weight": 25, "skills": ["Temperature Check", "Surfacing Concerns", "Next Steps"]}
+    }},
+    "proposal": {"name": "Proposal Call", "stages": {
+        "review": {"name": "Proposal Review", "weight": 30, "skills": ["Proposal Walkthrough", "Pricing Presentation", "Value Justification", "Addressing Questions"]},
+        "concerns": {"name": "Concerns", "weight": 35, "skills": ["Objection Handling", "Risk Mitigation", "Competitor Comparison", "Stakeholder Concerns"]},
+        "close": {"name": "Close", "weight": 35, "skills": ["Decision Timeline", "Next Steps", "Verbal Commitment", "Contract Process"]}
     }},
     "negotiation": {"name": "Negotiation Call", "stages": {
-        "review": {"name": "Review", "weight": 20, "skills": [{"id": "recap", "name": "Proposal Recap"}, {"id": "value", "name": "Value Reinforcement"}]},
-        "negotiate": {"name": "Negotiation", "weight": 50, "skills": [{"id": "listen", "name": "Listening to Concerns"}, {"id": "trade", "name": "Trading Value"}, {"id": "anchor", "name": "Anchoring"}, {"id": "creative", "name": "Creative Solutions"}]},
-        "close": {"name": "Close", "weight": 30, "skills": [{"id": "ask", "name": "Asking for Close"}, {"id": "final", "name": "Final Objections"}, {"id": "paper", "name": "Paperwork Process"}]}
+        "review": {"name": "Review", "weight": 20, "skills": ["Proposal Recap", "Value Reinforcement"]},
+        "negotiate": {"name": "Negotiation", "weight": 50, "skills": ["Listening to Concerns", "Trading Value", "Anchoring", "Creative Solutions"]},
+        "close": {"name": "Close", "weight": 30, "skills": ["Asking for Close", "Final Objections", "Paperwork Process"]}
+    }},
+    "interview": {"name": "Customer Interview", "stages": {
+        "intro": {"name": "Introduction", "weight": 15, "skills": ["Rapport Building", "Setting Context", "Permission & Recording"]},
+        "discovery": {"name": "Discovery", "weight": 50, "skills": ["Open-Ended Questions", "Active Listening", "Follow-up Probes", "Capturing Insights", "Pain Point Exploration"]},
+        "close": {"name": "Wrap-Up", "weight": 35, "skills": ["Summary of Key Points", "Additional Questions", "Next Steps", "Thank You & Follow-up"]}
     }},
     "follow_up": {"name": "Follow-Up Call", "stages": {
-        "reconnect": {"name": "Reconnect", "weight": 25, "skills": [{"id": "context", "name": "Context Reset"}, {"id": "changes", "name": "Situation Changes"}, {"id": "remind", "name": "Value Reminder"}]},
-        "advance": {"name": "Advance", "weight": 50, "skills": [{"id": "address", "name": "Address Objections"}, {"id": "new", "name": "New Information"}, {"id": "urgency", "name": "Creating Urgency"}]},
-        "commit": {"name": "Commitment", "weight": 25, "skills": [{"id": "micro", "name": "Micro-Commitment"}, {"id": "book", "name": "Book Next Meeting"}, {"id": "actions", "name": "Action Items"}]}
+        "reconnect": {"name": "Reconnect", "weight": 25, "skills": ["Context Reset", "Situation Changes", "Value Reminder"]},
+        "advance": {"name": "Advance", "weight": 50, "skills": ["Address Objections", "New Information", "Creating Urgency"]},
+        "commit": {"name": "Commitment", "weight": 25, "skills": ["Micro-Commitment", "Book Next Meeting", "Action Items"]}
     }}
 }
 
@@ -91,7 +101,7 @@ def submit_feedback(app, feedback_type, message):
     except: return False
 
 def init_session():
-    for k, v in [('authenticated', False), ('user', None), ('is_god', False), ('session_token', None), ('user_plan', 'free'), ('working_on', None), ('wizard_step', 1), ('analysis_result', None), ('call_data', {})]:
+    for k, v in [('authenticated', False), ('user', None), ('is_god', False), ('session_token', None), ('user_plan', 'free'), ('working_on', None), ('analysis_result', None)]:
         if k not in st.session_state: st.session_state[k] = v
 
 def check_url_auth():
@@ -111,37 +121,85 @@ def build_app_url(app_name):
     return f"{base}?auth={token}" if base and token else base
 
 def extract_text_from_file(uploaded_file):
-    ft = uploaded_file.name.split('.')[-1].lower()
+    """Extract text from uploaded files with robust DOCX handling"""
+    file_type = uploaded_file.name.split('.')[-1].lower()
     content = uploaded_file.read()
     uploaded_file.seek(0)
-    if ft == 'txt': return content.decode('utf-8', errors='ignore')
-    if ft == 'pdf':
+    
+    if file_type == 'txt':
+        return content.decode('utf-8', errors='ignore')
+    
+    elif file_type == 'pdf':
         try:
             import fitz
-            return "\n".join([p.get_text() for p in fitz.open(stream=content, filetype="pdf")])
-        except: return "[PDF failed]"
-    if ft in ['docx', 'doc']:
+            pdf = fitz.open(stream=content, filetype="pdf")
+            return "\n".join([page.get_text() for page in pdf])
+        except Exception as e:
+            return f"[PDF extraction error: {e}]"
+    
+    elif file_type in ['docx', 'doc']:
+        # Try python-docx first
         try:
             from docx import Document
-            return '\n'.join([p.text for p in Document(io.BytesIO(content)).paragraphs])
-        except: return "[DOCX failed]"
-    if ft in ['vtt', 'srt']:
+            doc = Document(io.BytesIO(content))
+            paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
+            # Also get text from tables
+            for table in doc.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        if cell.text.strip():
+                            paragraphs.append(cell.text.strip())
+            if paragraphs:
+                return '\n\n'.join(paragraphs)
+        except Exception as e:
+            pass
+        
+        # Fallback: try to extract raw text from DOCX (it's a zip file)
+        try:
+            import zipfile
+            from xml.etree import ElementTree
+            with zipfile.ZipFile(io.BytesIO(content)) as z:
+                xml_content = z.read('word/document.xml')
+                tree = ElementTree.fromstring(xml_content)
+                texts = []
+                for elem in tree.iter():
+                    if elem.text:
+                        texts.append(elem.text)
+                if texts:
+                    return ' '.join(texts)
+        except:
+            pass
+        
+        return "[DOCX extraction failed - please paste the transcript directly]"
+    
+    elif file_type in ['vtt', 'srt']:
         text = content.decode('utf-8', errors='ignore')
+        # Remove timestamps and formatting
         text = re.sub(r'\d{2}:\d{2}:\d{2}[.,]\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}[.,]\d{3}', '', text)
-        return '\n'.join([l.strip() for l in re.sub(r'WEBVTT.*?\n|<[^>]+>|^\d+$', '', text, flags=re.MULTILINE).split('\n') if l.strip()])
-    if ft in ['mp3', 'm4a', 'wav', 'mp4', 'webm']:
-        key = os.environ.get("OPENAI_API_KEY", "")
-        if key:
+        text = re.sub(r'WEBVTT.*?\n', '', text)
+        text = re.sub(r'<[^>]+>', '', text)
+        text = re.sub(r'^\d+$', '', text, flags=re.MULTILINE)
+        lines = [line.strip() for line in text.split('\n') if line.strip()]
+        return '\n'.join(lines)
+    
+    elif file_type in ['mp3', 'm4a', 'wav', 'mp4', 'webm', 'ogg']:
+        openai_key = os.environ.get("OPENAI_API_KEY", "")
+        if openai_key:
             try:
-                with tempfile.NamedTemporaryFile(suffix=f".{ft}", delete=False) as tmp:
+                with tempfile.NamedTemporaryFile(suffix=f".{file_type}", delete=False) as tmp:
                     tmp.write(content)
                     tmp_path = tmp.name
                 with open(tmp_path, 'rb') as f:
-                    r = requests.post("https://api.openai.com/v1/audio/transcriptions", headers={"Authorization": f"Bearer {key}"}, files={"file": f}, data={"model": "whisper-1"}, timeout=300)
+                    r = requests.post("https://api.openai.com/v1/audio/transcriptions", headers={"Authorization": f"Bearer {openai_key}"}, files={"file": f}, data={"model": "whisper-1"}, timeout=300)
                 os.unlink(tmp_path)
-                if r.status_code == 200: return r.json().get("text", "")
-            except: pass
-        return "[Audio needs OPENAI_API_KEY]"
+                if r.status_code == 200:
+                    return r.json().get("text", "")
+                return f"[Transcription error: {r.status_code}]"
+            except Exception as e:
+                return f"[Transcription error: {e}]"
+        return "[Audio transcription requires OPENAI_API_KEY environment variable]"
+    
+    # Default: try to decode as text
     return content.decode('utf-8', errors='ignore')
 
 def call_claude(prompt, max_tokens=8000, action="sales"):
@@ -155,23 +213,65 @@ def call_claude(prompt, max_tokens=8000, action="sales"):
         return f"Error: {r.status_code}", 0
     except Exception as e: return f"Error: {e}", 0
 
-def analyze_call(call_data, transcript):
-    fw = CALL_FRAMEWORKS.get(call_data.get('call_type', 'discovery'))
-    stages_desc = "\n".join([f"### {s['name']}\n" + "\n".join([f"- {sk['name']}" for sk in s['skills']]) for s in fw['stages'].values()])
-    prompt = f"""Expert sales coach analyzing a {fw['name']}. 
+def analyze_call(call_type, prospect_name, company_name, deal_size, stage, notes, transcript):
+    fw = CALL_FRAMEWORKS.get(call_type, CALL_FRAMEWORKS['discovery'])
+    stages_desc = "\n".join([f"### {s['name']} (Weight: {s['weight']}%)\nSkills: {', '.join(s['skills'])}" for s in fw['stages'].values()])
+    
+    prompt = f"""You are an expert sales coach analyzing a {fw['name']}.
 
-CONTEXT: {call_data.get('prospect_name')} at {call_data.get('company_name')} | {call_data.get('deal_size', 'Unknown')} deal | {call_data.get('stage', 'Unknown')} stage
+## CALL CONTEXT
+- Prospect: {prospect_name or 'Unknown'} at {company_name or 'Unknown Company'}
+- Deal Size: {deal_size or 'Unknown'}
+- Stage: {stage or 'Unknown'}
+- Notes: {notes or 'None'}
 
-FRAMEWORK:\n{stages_desc}
+## EVALUATION FRAMEWORK
+{stages_desc}
 
-TRANSCRIPT:\n{transcript[:15000]}
+## TRANSCRIPT
+{transcript[:20000]}
 
-Analyze with JSON:
+---
+
+Analyze this call thoroughly. For each stage and skill, provide specific feedback with exact quotes from the transcript.
+
+Return your analysis in this JSON format:
 ```json
-{{"overall_score": 0-100, "overall_summary": "...", "stages": [{{"stage_name": "...", "stage_score": 0-10, "skills": [{{"skill_name": "...", "score": 0-10, "score_label": "Excellent|Good|Needs Work|Missed", "feedback": ["..."], "transcript_examples": ["..."], "improvement_example": "..."}}]}}], "key_wins": ["..."], "critical_improvements": ["..."], "deal_insights": {{"buying_signals": [], "red_flags": [], "next_steps_suggested": [], "deal_probability": "High|Medium|Low", "deal_probability_reasoning": "..."}}, "coaching_summary": "..."}}
+{{
+    "overall_score": <0-100>,
+    "overall_summary": "<2-3 sentence executive summary>",
+    "stages": [
+        {{
+            "stage_name": "<Stage Name>",
+            "stage_score": <0-10>,
+            "skills": [
+                {{
+                    "skill_name": "<Skill Name>",
+                    "score": <0-10>,
+                    "score_label": "<Excellent|Good|Needs Work|Missed>",
+                    "feedback": ["<specific feedback point>", "<another point>"],
+                    "transcript_examples": ["<exact quote from transcript>"],
+                    "improvement_example": "<what they could have said instead>"
+                }}
+            ]
+        }}
+    ],
+    "key_wins": ["<something done well>", "<another strength>"],
+    "critical_improvements": ["<most important fix>", "<second priority>"],
+    "deal_insights": {{
+        "buying_signals": ["<signal identified>"],
+        "red_flags": ["<concern>"],
+        "next_steps_suggested": ["<recommended action>"],
+        "deal_probability": "<High|Medium|Low>",
+        "deal_probability_reasoning": "<why>"
+    }},
+    "coaching_summary": "<paragraph of personalized coaching advice>"
+}}
 ```
-Be specific. Use exact quotes."""
-    return call_claude(prompt, 8000, f"analyze_{call_data.get('call_type', 'discovery')}")
+
+Be specific. Use exact quotes. Be constructive but honest."""
+
+    return call_claude(prompt, 8000, f"analyze_{call_type}")
 
 st.set_page_config(page_title="Sharp Sales", page_icon="💰", layout="wide")
 init_session()
@@ -195,7 +295,7 @@ p,span,label,div,li { color: #e5e5e5; }
 .stRadio > div > label { background: #12121a !important; padding: 10px 16px !important; border-radius: 8px !important; border: 1px solid rgba(99,102,241,0.2) !important; }
 [data-testid="stFileUploader"] { background: #12121a !important; border: 1px dashed rgba(99,102,241,0.3) !important; border-radius: 8px !important; }
 .user-card { background: rgba(99,102,241,0.1); border-radius: 12px; padding: 16px; margin-bottom: 20px; }
-.wizard-card { background: #12121a; border: 1px solid rgba(99,102,241,0.2); border-radius: 16px; padding: 30px; margin: 20px 0; }
+.input-section { background: #12121a; border: 1px solid rgba(99,102,241,0.2); border-radius: 12px; padding: 20px; margin: 12px 0; }
 .transcript-quote { background: #1a1a2e; border-left: 3px solid #6366f1; padding: 12px 16px; margin: 8px 0; border-radius: 0 8px 8px 0; font-style: italic; color: #a5b4fc; }
 .improvement-box { background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.3); border-radius: 8px; padding: 16px; margin-top: 12px; }
 .status-badge { position: fixed; top: 70px; right: 20px; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; padding: 10px 20px; border-radius: 25px; font-weight: 600; z-index: 999; animation: pulse 2s infinite; }
@@ -203,6 +303,7 @@ p,span,label,div,li { color: #e5e5e5; }
 div[data-testid="stPopover"] button { background: linear-gradient(135deg, #6366f1, #8b5cf6) !important; color: white !important; border: none !important; border-radius: 25px !important; }
 </style>""", unsafe_allow_html=True)
 
+# Auth
 if not st.session_state.authenticated:
     c1, c2, c3 = st.columns([1, 1.2, 1])
     with c2:
@@ -231,6 +332,7 @@ if not st.session_state.authenticated:
 
 if st.session_state.working_on: st.markdown(f'<div class="status-badge">{st.session_state.working_on}</div>', unsafe_allow_html=True)
 
+# Sidebar
 with st.sidebar:
     st.markdown(f"""<div class="user-card"><p style="color:#9ca3af;margin:0;font-size:12px;">Logged in as</p><p style="color:#fff;margin:4px 0;font-weight:600;">{get_user_email()}</p><p style="color:#6366f1;margin:0;font-size:12px;text-transform:uppercase;">{st.session_state.get('user_plan','free')} plan</p></div>""", unsafe_allow_html=True)
     st.markdown("**Apps**")
@@ -243,18 +345,30 @@ with st.sidebar:
         for k in list(st.session_state.keys()): del st.session_state[k]
         st.rerun()
 
+# Header
 st.markdown("""<div style="display:flex;align-items:center;gap:16px;padding:20px 0;border-bottom:1px solid rgba(99,102,241,0.2);margin-bottom:30px;"><img src="https://sharphuman.com/logo1-3.png" style="width:50px;"><div><h1 style="margin:0;font-size:28px;">Sharp Sales</h1><p style="color:#9ca3af;margin:0;">AI-Powered Sales Call Analysis</p></div></div>""", unsafe_allow_html=True)
 
+# Check for results
 if st.session_state.get('analysis_result'):
-    st.markdown("## 📊 Call Analysis")
-    if st.button("← New Analysis"): st.session_state.analysis_result, st.session_state.wizard_step, st.session_state.call_data = None, 1, {}; st.rerun()
+    # Results View
+    if st.button("← New Analysis", type="secondary"):
+        st.session_state.analysis_result = None
+        st.rerun()
+    
     try:
         txt = st.session_state.analysis_result
         m = re.search(r'```json\s*(.*?)\s*```', txt, re.DOTALL)
         a = json.loads(m.group(1) if m else txt)
+        
         score = a.get('overall_score', 0)
         color = "#10b981" if score >= 70 else "#eab308" if score >= 50 else "#ef4444"
-        st.markdown(f"""<div style="background:linear-gradient(135deg,rgba(99,102,241,0.1),rgba(139,92,246,0.1));border-radius:16px;padding:30px;text-align:center;"><p style="color:#9ca3af;margin:0;">OVERALL SCORE</p><p style="color:{color};font-size:64px;font-weight:bold;margin:10px 0;">{score}<span style="font-size:24px;color:#6b7280;">/100</span></p><p style="color:#e5e5e5;">{a.get('overall_summary', '')}</p></div>""", unsafe_allow_html=True)
+        
+        st.markdown(f"""<div style="background:linear-gradient(135deg,rgba(99,102,241,0.1),rgba(139,92,246,0.1));border-radius:16px;padding:30px;text-align:center;margin-bottom:24px;">
+            <p style="color:#9ca3af;margin:0;">OVERALL SCORE</p>
+            <p style="color:{color};font-size:64px;font-weight:bold;margin:10px 0;">{score}<span style="font-size:24px;color:#6b7280;">/100</span></p>
+            <p style="color:#e5e5e5;">{a.get('overall_summary', '')}</p>
+        </div>""", unsafe_allow_html=True)
+        
         c1, c2 = st.columns(2)
         with c1:
             st.markdown("#### ✅ Key Wins")
@@ -262,102 +376,136 @@ if st.session_state.get('analysis_result'):
         with c2:
             st.markdown("#### 🎯 Critical Improvements")
             for i in a.get('critical_improvements', []): st.markdown(f"<div style='background:rgba(239,68,68,0.1);border-left:3px solid #ef4444;padding:12px;margin:8px 0;border-radius:0 8px 8px 0;'>{i}</div>", unsafe_allow_html=True)
+        
         st.markdown("---")
         st.markdown("## 📈 Stage Analysis")
+        
         for stg in a.get('stages', []):
             with st.expander(f"**{stg.get('stage_name')}** — {stg.get('stage_score', 0)}/10"):
                 for sk in stg.get('skills', []):
                     sc = sk.get('score', 0)
-                    lbl = sk.get('score_label', 'Needs Work')
                     bc = "#10b981" if sc >= 8 else "#eab308" if sc >= 6 else "#f97316" if sc >= 4 else "#ef4444"
                     sym = "✓" if sc >= 6 else "−" if sc >= 4 else "✗"
-                    st.markdown(f"<div style='background:#12121a;border-radius:12px;padding:20px;margin:12px 0;border:1px solid rgba(99,102,241,0.2);'><div style='display:flex;justify-content:space-between;'><span style='font-weight:600;color:#fff;'>{sk.get('skill_name')}</span><span style='background:rgba(99,102,241,0.2);color:{bc};padding:6px 14px;border-radius:20px;font-size:13px;'>{sym} {sc}/10</span></div></div>", unsafe_allow_html=True)
+                    
+                    st.markdown(f"<div style='background:#12121a;border-radius:12px;padding:16px;margin:12px 0;border:1px solid rgba(99,102,241,0.2);'><div style='display:flex;justify-content:space-between;'><span style='font-weight:600;color:#fff;'>{sk.get('skill_name')}</span><span style='background:rgba(99,102,241,0.2);color:{bc};padding:6px 14px;border-radius:20px;font-size:13px;'>{sym} {sc}/10</span></div></div>", unsafe_allow_html=True)
+                    
                     st.markdown("**Feedback:**")
                     for fb in sk.get('feedback', []): st.markdown(f"→ {fb}")
+                    
                     if sk.get('transcript_examples'):
-                        st.markdown("**Transcript:**")
+                        st.markdown("**From the call:**")
                         for q in sk.get('transcript_examples', []): st.markdown(f'<div class="transcript-quote">"{q}"</div>', unsafe_allow_html=True)
-                    if sk.get('improvement_example'): st.markdown(f'<div class="improvement-box"><p style="color:#10b981;margin:0 0 8px;font-weight:600;">💡 Try this:</p><p style="color:#e5e5e5;margin:0;font-style:italic;">{sk.get("improvement_example")}</p></div>', unsafe_allow_html=True)
+                    
+                    if sk.get('improvement_example'):
+                        st.markdown(f'<div class="improvement-box"><p style="color:#10b981;margin:0 0 8px;font-weight:600;">💡 Try this instead:</p><p style="color:#e5e5e5;margin:0;font-style:italic;">{sk.get("improvement_example")}</p></div>', unsafe_allow_html=True)
+        
         st.markdown("---")
         st.markdown("## 💼 Deal Insights")
+        
         ins = a.get('deal_insights', {})
         c1, c2, c3 = st.columns(3)
         with c1:
             prob = ins.get('deal_probability', 'Unknown')
             pc = "#10b981" if prob == "High" else "#eab308" if prob == "Medium" else "#ef4444"
-            st.markdown(f"<div style='background:#12121a;border-radius:12px;padding:20px;text-align:center;'><p style='color:#9ca3af;margin:0;font-size:12px;'>DEAL PROBABILITY</p><p style='color:{pc};font-size:28px;font-weight:bold;margin:8px 0;'>{prob}</p></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='background:#12121a;border-radius:12px;padding:20px;text-align:center;'><p style='color:#9ca3af;margin:0;font-size:12px;'>DEAL PROBABILITY</p><p style='color:{pc};font-size:28px;font-weight:bold;margin:8px 0;'>{prob}</p><p style='color:#6b7280;font-size:11px;'>{ins.get('deal_probability_reasoning', '')[:80]}...</p></div>", unsafe_allow_html=True)
         with c2:
             st.markdown("**🟢 Buying Signals**")
             for s in ins.get('buying_signals', []): st.markdown(f"• {s}")
         with c3:
             st.markdown("**🔴 Red Flags**")
             for f in ins.get('red_flags', []): st.markdown(f"• {f}")
-        st.markdown("#### 📋 Next Steps")
+        
+        st.markdown("#### 📋 Suggested Next Steps")
         for s in ins.get('next_steps_suggested', []): st.markdown(f"- [ ] {s}")
+        
         st.markdown("---")
-        st.markdown("## 🎓 Coaching")
+        st.markdown("## 🎓 Coaching Summary")
         st.markdown(f"<div style='background:linear-gradient(135deg,rgba(99,102,241,0.1),rgba(139,92,246,0.1));border-radius:12px;padding:24px;border-left:4px solid #6366f1;'>{a.get('coaching_summary', '')}</div>", unsafe_allow_html=True)
-        st.download_button("📥 Download", txt, "analysis.md", use_container_width=True)
-    except Exception as e: st.error(f"Parse error: {e}"); st.markdown(st.session_state.analysis_result)
+        
+        st.download_button("📥 Download Full Analysis", txt, "sales_analysis.md", use_container_width=True)
+        
+    except Exception as e:
+        st.error(f"Parse error: {e}")
+        st.text(st.session_state.analysis_result)
+
 else:
-    step = st.session_state.wizard_step
-    st.markdown(f"""<div style="display:flex;justify-content:center;gap:20px;margin-bottom:30px;"><div style="text-align:center;"><div style="width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;{'background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white' if step==1 else 'background:#10b981;color:white' if step>1 else 'background:#1a1a2e;color:#6b7280'};">1</div><p style="color:#9ca3af;font-size:12px;margin-top:8px;">Details</p></div><div style="width:60px;height:2px;background:#1a1a2e;margin-top:20px;"></div><div style="text-align:center;"><div style="width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;{'background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white' if step==2 else 'background:#1a1a2e;color:#6b7280'};">2</div><p style="color:#9ca3af;font-size:12px;margin-top:8px;">Recording</p></div></div>""", unsafe_allow_html=True)
-    if step == 1:
-        st.markdown('<div class="wizard-card">', unsafe_allow_html=True)
-        st.markdown("### 📞 Call Details")
-        call_type = st.radio("Call Type:", list(CALL_FRAMEWORKS.keys()), format_func=lambda x: CALL_FRAMEWORKS[x]['name'], horizontal=True)
-        c1, c2 = st.columns(2)
-        with c1: call_date = st.date_input("📅 Call Date", value=date.today())
-        with c2: deal_size = st.text_input("💰 Deal Size", placeholder="$50,000")
-        stage = st.selectbox("📊 Stage", ["Discovery", "Qualification", "Demo", "Proposal", "Negotiation", "Closed"])
-        st.markdown("---")
-        st.markdown("### 👤 Prospect")
-        c1, c2 = st.columns(2)
-        with c1: prospect_name = st.text_input("Name *", placeholder="John Smith"); prospect_email = st.text_input("Email", placeholder="john@company.com")
-        with c2: prospect_title = st.text_input("Title", placeholder="VP Sales"); prospect_linkedin = st.text_input("LinkedIn", placeholder="https://linkedin.com/in/...")
-        st.markdown("---")
-        st.markdown("### 🏢 Company")
-        c1, c2 = st.columns(2)
-        with c1: company_name = st.text_input("Company *", placeholder="Acme Corp"); company_website = st.text_input("Website", placeholder="https://acme.com"); industry = st.text_input("Industry", placeholder="Software")
-        with c2: headcount = st.selectbox("Headcount", ["Unknown", "1-10", "11-50", "51-200", "201-500", "500+"]); location = st.text_input("Location", placeholder="San Francisco"); revenue = st.selectbox("Revenue", ["Unknown", "<$1M", "$1-10M", "$10-50M", "$50M+"])
-        st.markdown('</div>', unsafe_allow_html=True)
-        c1, c2 = st.columns([1, 1])
-        with c2:
-            if st.button("Next →", type="primary", use_container_width=True):
-                if not prospect_name or not company_name: st.warning("Enter prospect and company name")
-                else:
-                    st.session_state.call_data = {'call_type': call_type, 'call_date': str(call_date), 'deal_size': deal_size, 'stage': stage, 'prospect_name': prospect_name, 'prospect_title': prospect_title, 'prospect_email': prospect_email, 'prospect_linkedin': prospect_linkedin, 'company_name': company_name, 'company_website': company_website, 'industry': industry, 'headcount': headcount, 'location': location, 'revenue': revenue}
-                    st.session_state.wizard_step = 2
-                    st.rerun()
-    elif step == 2:
-        st.markdown('<div class="wizard-card">', unsafe_allow_html=True)
-        st.markdown("### 🎙️ Recording")
-        input_type = st.radio("Input:", ["📁 Upload", "📝 Paste"], horizontal=True)
-        transcript = ""
-        if input_type == "📁 Upload":
-            f = st.file_uploader("Upload file", type=['mp3', 'wav', 'm4a', 'mp4', 'txt', 'pdf', 'docx', 'vtt', 'srt'])
-            if f:
-                with st.spinner("Processing..."): transcript = extract_text_from_file(f)
-                if transcript and not transcript.startswith("["): st.success(f"✅ {f.name}")
-                else: st.warning(transcript)
-        else: transcript = st.text_area("Paste transcript:", height=300, placeholder="Salesperson: Hi...\nProspect: Thanks for...")
-        st.markdown("---")
-        notes = st.text_area("📝 Notes/Questions", height=100, placeholder="Any specific areas to analyze?")
-        st.session_state.call_data['notes'] = notes
-        st.markdown('</div>', unsafe_allow_html=True)
+    # Input Form (Single Screen)
+    st.markdown("### 📞 Call Details")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown('<div class="input-section">', unsafe_allow_html=True)
+        st.markdown("**Call Information**")
+        call_type = st.selectbox("Call Type", list(CALL_FRAMEWORKS.keys()), format_func=lambda x: CALL_FRAMEWORKS[x]['name'])
+        
         c1, c2 = st.columns(2)
         with c1:
-            if st.button("← Back", use_container_width=True): st.session_state.wizard_step = 1; st.rerun()
+            prospect_name = st.text_input("Prospect Name", placeholder="John Smith")
         with c2:
-            if st.button("🚀 Analyze", type="primary", use_container_width=True):
-                if not transcript: st.warning("Provide transcript")
+            company_name = st.text_input("Company", placeholder="Acme Corp")
+        
+        c1, c2 = st.columns(2)
+        with c1:
+            deal_size = st.text_input("Deal Size", placeholder="$50,000")
+        with c2:
+            stage = st.selectbox("Sales Stage", ["Discovery", "Qualification", "Demo", "Proposal", "Negotiation", "Closed"])
+        
+        notes = st.text_area("Notes/Questions (optional)", height=80, placeholder="Any specific areas you want analyzed?")
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown('<div class="input-section">', unsafe_allow_html=True)
+        st.markdown("**Call Recording / Transcript**")
+        
+        input_method = st.radio("Input Method:", ["📝 Paste Transcript", "📁 Upload File"], horizontal=True)
+        
+        transcript = ""
+        
+        if input_method == "📝 Paste Transcript":
+            transcript = st.text_area(
+                "Paste your transcript here:",
+                height=250,
+                placeholder="Salesperson: Hi John, thanks for taking the time today...\nProspect: Of course, happy to chat...\n\nPaste the full conversation transcript here."
+            )
+        else:
+            uploaded_file = st.file_uploader(
+                "Upload recording or transcript",
+                type=['txt', 'pdf', 'docx', 'doc', 'vtt', 'srt', 'mp3', 'wav', 'm4a', 'mp4', 'webm'],
+                help="Supports: TXT, PDF, DOCX, VTT, SRT, MP3, WAV, M4A, MP4, WebM"
+            )
+            if uploaded_file:
+                with st.spinner(f"Processing {uploaded_file.name}..."):
+                    transcript = extract_text_from_file(uploaded_file)
+                
+                if transcript and not transcript.startswith("["):
+                    st.success(f"✅ Loaded: {uploaded_file.name} ({len(transcript):,} characters)")
+                    with st.expander("Preview transcript"):
+                        st.text(transcript[:2000] + ("..." if len(transcript) > 2000 else ""))
                 else:
-                    st.session_state.working_on = "Analyzing..."
-                    result, _ = analyze_call(st.session_state.call_data, transcript)
-                    st.session_state.working_on = None
-                    if not result.startswith("Error"): st.session_state.analysis_result = result; st.rerun()
-                    else: st.error(result)
+                    st.warning(transcript)
+                    st.info("💡 If upload fails, try pasting the transcript directly instead.")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Analyze Button
+    st.markdown("---")
+    
+    if st.button("🚀 Analyze Call", type="primary", use_container_width=True):
+        if not transcript or len(transcript.strip()) < 100:
+            st.warning("Please provide a transcript (paste or upload). Minimum 100 characters required.")
+        else:
+            st.session_state.working_on = "Analyzing your call..."
+            result, _ = analyze_call(call_type, prospect_name, company_name, deal_size, stage, notes, transcript)
+            st.session_state.working_on = None
+            
+            if not str(result).startswith("Error"):
+                st.session_state.analysis_result = result
+                st.rerun()
+            else:
+                st.error(result)
 
+# Feedback
 st.markdown('<div style="height:60px;"></div>', unsafe_allow_html=True)
 _, _, _, fb = st.columns([4, 1, 1, 1])
 with fb:
