@@ -61,11 +61,11 @@ COLORS = {
     "pink_dark": "#be185d",
     
     # Background - ALL dark gray like website
-    "bg_dark": "#2d2d2d",
-    "bg_card": "#2d2d2d",
-    "bg_sidebar": "#2d2d2d",
-    "bg_input": "#3a3a3a",
-    "bg_hover": "#404040",
+    "bg_dark": "#1a1a1a",
+    "bg_card": "#1a1a1a",
+    "bg_sidebar": "#1a1a1a",
+    "bg_input": "#2a2a2a",
+    "bg_hover": "#333333",
     "bg_banner": "#2d2d2d",
     
     # Text
@@ -865,19 +865,6 @@ def render_sidebar(
             st.markdown("---")
             admin_url = f"{APP_URLS.get('admin', '')}?auth={session_token}" if session_token else APP_URLS.get('admin', "")
             st.link_button("⚙️ Admin Dashboard", admin_url, use_container_width=True)
-        
-        # External Links
-        if show_external_links:
-            st.markdown("---")
-            st.markdown(f"<p style='color: {COLORS['text_muted']}; font-size: 11px; margin: 0 0 8px 4px; text-transform: uppercase; letter-spacing: 0.5px;'>🔗 Resources</p>", unsafe_allow_html=True)
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                st.link_button("🌐 Website", EXTERNAL_LINKS["website"], use_container_width=True)
-                st.link_button("📅 Book Call", EXTERNAL_LINKS["calendly"], use_container_width=True)
-            with col2:
-                st.link_button("📖 Blog", EXTERNAL_LINKS["blog"], use_container_width=True)
-                st.link_button("💬 Contact", EXTERNAL_LINKS["contact"], use_container_width=True)
         
         st.markdown("---")
         
