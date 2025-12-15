@@ -49,18 +49,27 @@ EXTERNAL_LINKS = {
 # ===========================================
 
 COLORS = {
-    # Primary palette (matching website pink/purple)
-    "primary": "#db2777",       # Pink from website
-    "primary_light": "#ec4899",
-    "primary_dark": "#be185d",
-    "secondary": "#8b5cf6",
-    "accent_blue": "#3b82f6",   # Blue for outlines
+    # Primary palette 
+    "primary": "#3b82f6",       # Blue for app buttons
+    "primary_light": "#60a5fa",
+    "primary_dark": "#2563eb",
+    "secondary": "#8b5cf6",     # Purple accent
     
-    # Background (matching website - unified dark)
-    "bg_dark": "#0f0f14",       # Main background - matches website
-    "bg_card": "#0f0f14",       # Same as bg for unified look
-    "bg_sidebar": "#0f0f14",    # Sidebar same color
-    "bg_input": "#1a1a24",      # Slightly lighter for inputs
+    # Pink/Magenta for highlights
+    "pink": "#db2777",
+    "pink_light": "#ec4899",
+    "pink_dark": "#be185d",
+    
+    # Green for CTAs (like website "Try Sharp Suite")
+    "green": "#10b981",
+    "green_light": "#34d399",
+    "green_dark": "#059669",
+    
+    # Background (matching website - very dark)
+    "bg_dark": "#0c0c10",       # Main background
+    "bg_card": "#12121a",       # Cards slightly lighter
+    "bg_sidebar": "#0c0c10",    # Sidebar same as main
+    "bg_input": "#1a1a24",      # Input fields
     "bg_hover": "#1f1f2e",      # Hover state
     
     # Text
@@ -75,9 +84,10 @@ COLORS = {
     "error": "#ef4444",
     "info": "#3b82f6",
     
-    # Borders (subtle)
-    "border": "rgba(255, 255, 255, 0.1)",
-    "border_light": "rgba(255, 255, 255, 0.15)",
+    # Borders (subtle, like website)
+    "border": "rgba(255, 255, 255, 0.08)",
+    "border_light": "rgba(255, 255, 255, 0.12)",
+    "border_card": "rgba(99, 102, 241, 0.15)",
 }
 
 TYPOGRAPHY = {
@@ -130,10 +140,10 @@ def get_global_css():
         background: transparent !important;
     }}
     
-    /* ========== SIDEBAR - Same background ========== */
+    /* ========== SIDEBAR - With subtle border ========== */
     section[data-testid="stSidebar"] {{
         background: {COLORS["bg_dark"]} !important;
-        border-right: 1px solid {COLORS["border"]} !important;
+        border-right: 1px solid {COLORS["border_card"]} !important;
     }}
     
     section[data-testid="stSidebar"] > div {{
@@ -143,6 +153,13 @@ def get_global_css():
     /* Hide default sidebar collapse button */
     section[data-testid="stSidebar"] > div > div:first-child > div:first-child {{
         display: none !important;
+    }}
+    
+    /* ========== CARDS & CONTAINERS ========== */
+    .input-card, [data-testid="stExpander"] {{
+        background: {COLORS["bg_card"]} !important;
+        border: 1px solid {COLORS["border_card"]} !important;
+        border-radius: 12px !important;
     }}
     
     /* ========== TYPOGRAPHY ========== */
@@ -168,8 +185,8 @@ def get_global_css():
     .stTextArea > div > div > textarea,
     .stSelectbox > div > div > div,
     .stMultiselect > div > div > div {{
-        background: {COLORS["bg_input"]} !important;
-        border: 1px solid {COLORS["border_light"]} !important;
+        background: {COLORS["bg_card"]} !important;
+        border: 1px solid {COLORS["border_card"]} !important;
         border-radius: 8px !important;
         color: {COLORS["text_primary"]} !important;
         font-size: {TYPOGRAPHY["size_base"]} !important;
@@ -178,19 +195,26 @@ def get_global_css():
     .stTextInput > div > div > input:focus,
     .stTextArea > div > div > textarea:focus {{
         border-color: {COLORS["primary"]} !important;
-        box-shadow: 0 0 0 2px rgba(219, 39, 119, 0.2) !important;
+        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2) !important;
     }}
     
     /* Select dropdowns */
     [data-baseweb="select"] > div {{
-        background: {COLORS["bg_input"]} !important;
-        border-color: {COLORS["border_light"]} !important;
+        background: {COLORS["bg_card"]} !important;
+        border-color: {COLORS["border_card"]} !important;
     }}
     
-    /* Tags in multiselect */
+    /* Tags in multiselect - pink like website */
     [data-baseweb="tag"] {{
-        background: {COLORS["primary"]} !important;
+        background: {COLORS["pink"]} !important;
         color: white !important;
+    }}
+    
+    /* File uploader */
+    [data-testid="stFileUploader"] {{
+        background: {COLORS["bg_card"]} !important;
+        border: 1px dashed {COLORS["border_card"]} !important;
+        border-radius: 8px !important;
     }}
     
     /* ========== BUTTONS ========== */
@@ -208,7 +232,7 @@ def get_global_css():
     .stButton > button:hover {{
         background: {COLORS["primary_dark"]} !important;
         transform: translateY(-1px) !important;
-        box-shadow: 0 4px 12px rgba(219, 39, 119, 0.4) !important;
+        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4) !important;
     }}
     
     .stButton > button:disabled {{
@@ -217,10 +241,23 @@ def get_global_css():
         opacity: 0.6 !important;
     }}
     
+    /* Download buttons - subtle style */
+    .stDownloadButton > button {{
+        background: {COLORS["bg_card"]} !important;
+        border: 1px solid {COLORS["border_light"]} !important;
+        color: {COLORS["text_secondary"]} !important;
+        border-radius: 8px !important;
+    }}
+    
+    .stDownloadButton > button:hover {{
+        border-color: {COLORS["primary"]} !important;
+        color: {COLORS["primary"]} !important;
+    }}
+    
     /* Secondary/Link buttons */
     .stLinkButton > a {{
-        background: {COLORS["bg_input"]} !important;
-        border: 1px solid {COLORS["border"]} !important;
+        background: {COLORS["bg_card"]} !important;
+        border: 1px solid {COLORS["border_card"]} !important;
         color: {COLORS["text_secondary"]} !important;
         border-radius: 8px !important;
         font-size: {TYPOGRAPHY["size_base"]} !important;
@@ -229,6 +266,7 @@ def get_global_css():
     .stLinkButton > a:hover {{
         border-color: {COLORS["primary"]} !important;
         color: {COLORS["primary"]} !important;
+        background: {COLORS["bg_hover"]} !important;
     }}
     
     /* ========== TABS ========== */
@@ -487,42 +525,43 @@ def get_global_css():
         gap: 12px;
     }}
     
-    /* Pink filled buttons - matching website exactly */
+    /* Green filled buttons - matching website CTA style */
     .top-banner-btn-pink {{
-        background: #db2777;
+        background: {COLORS["green"]};
         color: white !important;
         text-decoration: none !important;
         font-size: 14px;
         font-weight: 600;
-        padding: 12px 28px;
-        border-radius: 8px;
+        padding: 10px 24px;
+        border-radius: 25px;
         transition: all 0.2s;
         display: inline-block;
         border: none;
     }}
     
     .top-banner-btn-pink:hover {{
-        background: #be185d;
+        background: {COLORS["green_dark"]};
         transform: translateY(-1px);
         text-decoration: none !important;
+        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
     }}
     
-    /* Outline button - matching website exactly */
+    /* Outline button - white border like website */
     .top-banner-btn-outline {{
         background: transparent;
         color: white !important;
         text-decoration: none !important;
         font-size: 14px;
         font-weight: 600;
-        padding: 12px 28px;
-        border-radius: 8px;
-        border: 2px solid #3b82f6;
+        padding: 10px 24px;
+        border-radius: 25px;
+        border: 2px solid white;
         transition: all 0.2s;
         display: inline-block;
     }}
     
     .top-banner-btn-outline:hover {{
-        background: rgba(59, 130, 246, 0.15);
+        background: rgba(255, 255, 255, 0.1);
         transform: translateY(-1px);
         text-decoration: none !important;
     }}
@@ -788,8 +827,8 @@ def render_sidebar(
             <p style="color: {COLORS["text_primary"]}; margin: 6px 0 4px; font-weight: 600; font-size: 14px;">{user_email}</p>
             <span style="
                 display: inline-block;
-                background: {'linear-gradient(135deg, #db2777, #8b5cf6)' if user_plan == 'god' else 'rgba(219, 39, 119, 0.2)'};
-                color: {'white' if user_plan == 'god' else COLORS['primary']};
+                background: {'{}'.format(COLORS['pink']) if user_plan == 'god' else 'rgba(219, 39, 119, 0.2)'};
+                color: {'white' if user_plan == 'god' else COLORS['pink']};
                 padding: 2px 10px;
                 border-radius: 12px;
                 font-size: 11px;
@@ -806,10 +845,10 @@ def render_sidebar(
             url = f"{APP_URLS.get(app_key, '')}?auth={session_token}" if session_token else APP_URLS.get(app_key, "")
             
             if app_key == current_app:
-                # Current app - highlighted
+                # Current app - highlighted in pink
                 st.markdown(f"""
                 <div style="
-                    background: linear-gradient(135deg, {COLORS['primary']}, {COLORS['secondary']});
+                    background: {COLORS['pink']};
                     padding: 10px 16px;
                     border-radius: 8px;
                     margin: 4px 0;
