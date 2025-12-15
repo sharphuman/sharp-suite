@@ -43,7 +43,7 @@ except ImportError:
 # ===========================================
 EXTERNAL_LINKS = {
     "website": "https://sharphuman.com",
-    "website_label": "Bespoke Services",
+    "bespoke": "https://sharphuman.com#services",  # "Four Ways We Help You Grow" section
     "blog": "https://sharphuman.com/blog",
     "calendly": "https://calendly.com/sharphuman/60min",
     "contact": "https://sharphuman.com/contact",
@@ -474,23 +474,22 @@ def get_global_css():
         box-shadow: 0 4px 12px rgba(219, 39, 119, 0.3);
     }}
     
-    /* Outline button - white/light border like website */
+    /* Outline button - blue border for CTAs */
     .top-banner-btn-outline {{
         background: transparent;
-        color: white !important;
+        color: #60a5fa !important;
         text-decoration: none !important;
         font-size: 14px;
         font-weight: 600;
         padding: 10px 24px;
         border-radius: 6px;
-        border: 2px solid rgba(255, 255, 255, 0.3);
+        border: 2px solid #60a5fa;
         transition: all 0.2s;
         display: inline-block;
     }}
     
     .top-banner-btn-outline:hover {{
-        background: rgba(255, 255, 255, 0.1);
-        border-color: rgba(255, 255, 255, 0.5);
+        background: rgba(96, 165, 250, 0.1);
         transform: translateY(-1px);
         text-decoration: none !important;
     }}
@@ -586,31 +585,33 @@ def render_top_banner(show_cta: bool = True, cta_text: str = "Book a Demo", cta_
     Call this at the very top of your app, right after apply_global_styles().
     
     Layout:
-        Left side: Bespoke Services (pink), Blog (pink), Book a Demo (outline)
-        Right side: Book a Free AI Consultation (blue), sharphuman.com (blue)
+        Left side: Bespoke Services (pink), Blog (pink), sharphuman.com (pink)
+        Right side: Book a Demo (blue outline), Book a Free AI Consultation (blue outline)
     
     Args:
-        show_cta: Whether to show the CTA button on left side
-        cta_text: Text for the CTA button (default: "Book a Demo")
+        show_cta: Whether to show the CTA buttons on right side
+        cta_text: Text for the first CTA button (default: "Book a Demo")
         cta_url: URL for CTA (defaults to calendly link)
     """
     cta_link = cta_url or EXTERNAL_LINKS["calendly"]
     
-    # Build CTA button HTML conditionally
+    # Build right side CTA buttons
     cta_html = ""
     if show_cta:
-        cta_html = f'<a href="{cta_link}" target="_blank" class="top-banner-btn-outline">{cta_text}</a>'
+        cta_html = f'''
+            <a href="{cta_link}" target="_blank" class="top-banner-btn-outline">{cta_text}</a>
+            <a href="{EXTERNAL_LINKS["calendly"]}" target="_blank" class="top-banner-btn-outline">Book a Free AI Consultation</a>
+        '''
     
     banner_html = f"""
     <div class="top-banner">
         <div class="top-banner-links">
-            <a href="{EXTERNAL_LINKS["website"]}" target="_blank" class="top-banner-btn-pink">Bespoke Services</a>
+            <a href="{EXTERNAL_LINKS["bespoke"]}" target="_blank" class="top-banner-btn-pink">Bespoke Services</a>
             <a href="{EXTERNAL_LINKS["blog"]}" target="_blank" class="top-banner-btn-pink">Blog</a>
-            {cta_html}
+            <a href="{EXTERNAL_LINKS["website"]}" target="_blank" class="top-banner-btn-pink">sharphuman.com</a>
         </div>
         <div class="top-banner-right">
-            <a href="{EXTERNAL_LINKS["calendly"]}" target="_blank" class="top-banner-btn-blue">Book a Free AI Consultation</a>
-            <a href="{EXTERNAL_LINKS["website"]}" target="_blank" class="top-banner-btn-blue">sharphuman.com</a>
+            {cta_html}
         </div>
     </div>
     """
