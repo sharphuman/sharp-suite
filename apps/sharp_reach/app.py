@@ -531,6 +531,97 @@ Provide a day-by-day multi-channel approach for optimal response rate."""
 
     return call_claude(prompt, 3000, "cold_outreach")
 
+def export_to_pdf(content, title="Candidate Outreach", template_name=""):
+    """Export outreach content to PDF"""
+    try:
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import inch
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable, Preformatted
+        from reportlab.lib.colors import HexColor
+        from reportlab.lib.enums import TA_LEFT
+        
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch)
+        
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle('Title', parent=styles['Title'], fontSize=20, textColor=HexColor('#6366f1'), spaceAfter=12)
+        subtitle_style = ParagraphStyle('Subtitle', parent=styles['Normal'], fontSize=11, textColor=HexColor('#9ca3af'), spaceAfter=16)
+        heading_style = ParagraphStyle('Heading', parent=styles['Heading1'], fontSize=14, textColor=HexColor('#374151'), spaceBefore=16, spaceAfter=8)
+        body_style = ParagraphStyle('Body', parent=styles['Normal'], fontSize=10, textColor=HexColor('#4b5563'), spaceAfter=6, leading=14)
+        
+        story = []
+        
+        # Title
+        story.append(Paragraph(f"🚀 {title}", title_style))
+        if template_name:
+            story.append(Paragraph(f"Template: {template_name}", subtitle_style))
+        story.append(HRFlowable(width="100%", thickness=1, color=HexColor('#e5e7eb')))
+        story.append(Spacer(1, 16))
+        
+        # Process content - split by markdown headers
+        lines = content.split('\n')
+        current_section = []
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                if current_section:
+                    text = ' '.join(current_section)
+                    text_clean = ''.join(c if c.isprintable() or c in '\n' else ' ' for c in text)
+                    story.append(Paragraph(text_clean, body_style))
+                    current_section = []
+                story.append(Spacer(1, 6))
+            elif line.startswith('## '):
+                if current_section:
+                    text = ' '.join(current_section)
+                    text_clean = ''.join(c if c.isprintable() else ' ' for c in text)
+                    story.append(Paragraph(text_clean, body_style))
+                    current_section = []
+                heading = line.replace('## ', '').replace('**', '')
+                story.append(Paragraph(heading, heading_style))
+            elif line.startswith('# '):
+                if current_section:
+                    text = ' '.join(current_section)
+                    text_clean = ''.join(c if c.isprintable() else ' ' for c in text)
+                    story.append(Paragraph(text_clean, body_style))
+                    current_section = []
+                heading = line.replace('# ', '').replace('**', '')
+                story.append(Paragraph(heading, title_style))
+            elif line.startswith('### '):
+                if current_section:
+                    text = ' '.join(current_section)
+                    text_clean = ''.join(c if c.isprintable() else ' ' for c in text)
+                    story.append(Paragraph(text_clean, body_style))
+                    current_section = []
+                subhead = line.replace('### ', '').replace('**', '')
+                subhead_style = ParagraphStyle('Subhead', parent=styles['Heading2'], fontSize=12, textColor=HexColor('#6366f1'), spaceBefore=10, spaceAfter=6)
+                story.append(Paragraph(subhead, subhead_style))
+            elif line.startswith('- ') or line.startswith('• '):
+                if current_section:
+                    text = ' '.join(current_section)
+                    text_clean = ''.join(c if c.isprintable() else ' ' for c in text)
+                    story.append(Paragraph(text_clean, body_style))
+                    current_section = []
+                bullet = line[2:]
+                bullet_clean = ''.join(c if c.isprintable() else ' ' for c in bullet)
+                bullet_style = ParagraphStyle('Bullet', parent=body_style, leftIndent=20)
+                story.append(Paragraph(f"• {bullet_clean}", bullet_style))
+            else:
+                current_section.append(line)
+        
+        # Flush remaining content
+        if current_section:
+            text = ' '.join(current_section)
+            text_clean = ''.join(c if c.isprintable() else ' ' for c in text)
+            story.append(Paragraph(text_clean, body_style))
+        
+        doc.build(story)
+        buffer.seek(0)
+        return buffer.getvalue()
+    except Exception as e:
+        return None
+
 # ============================================
 # MAIN APP
 # ============================================
@@ -825,12 +916,16 @@ Recruiter: {your_name or 'Not specified'}"""
             st.markdown(result)
             
             st.markdown("---")
-            col1, col2, col3 = st.columns(3)
+            col1, col2, col3, col4 = st.columns(4)
             with col1:
-                st.download_button("📥 Download TXT", result, f"outreach_{template_type}.txt", use_container_width=True)
+                st.download_button("📥 TXT", result, f"outreach_{template_type}.txt", use_container_width=True)
             with col2:
-                st.download_button("📥 Download MD", result, f"outreach_{template_type}.md", use_container_width=True)
+                st.download_button("📥 MD", result, f"outreach_{template_type}.md", use_container_width=True)
             with col3:
+                pdf_bytes = export_to_pdf(result, f"Outreach: {candidate_name or 'Candidate'}", OUTREACH_TEMPLATES[template_type]['name'])
+                if pdf_bytes:
+                    st.download_button("📥 PDF", pdf_bytes, f"outreach_{template_type}.pdf", "application/pdf", use_container_width=True)
+            with col4:
                 if st.button("🔄 Regenerate", use_container_width=True):
                     st.session_state.generated_content = None
                     st.rerun()
