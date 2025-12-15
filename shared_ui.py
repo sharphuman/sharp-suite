@@ -437,40 +437,69 @@ def get_global_css():
     .top-banner {{
         background: {COLORS["bg_dark"]};
         border-bottom: 1px solid {COLORS["border"]};
-        padding: 10px 24px;
+        padding: 12px 24px;
         display: flex;
         justify-content: space-between;
         align-items: center;
         margin: -1rem -1rem 1rem -1rem;
         flex-wrap: wrap;
-        gap: 8px;
+        gap: 12px;
     }}
     
     .top-banner-links {{
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 12px;
     }}
     
-    .top-banner-link {{
-        color: {COLORS["text_secondary"]};
+    /* Pink filled buttons (Demo, Blog style) */
+    .top-banner-btn-pink {{
+        background: #db2777;
+        color: white !important;
+        text-decoration: none;
+        font-size: 14px;
+        font-weight: 600;
+        padding: 10px 24px;
+        border-radius: 8px;
+        transition: all 0.2s;
+        display: inline-block;
+    }}
+    
+    .top-banner-btn-pink:hover {{
+        background: #be185d;
+        transform: translateY(-1px);
+    }}
+    
+    /* Outline button (Let's Talk style) */
+    .top-banner-btn-outline {{
+        background: transparent;
+        color: white !important;
+        text-decoration: none;
+        font-size: 14px;
+        font-weight: 600;
+        padding: 10px 24px;
+        border-radius: 8px;
+        border: 2px solid #3b82f6;
+        transition: all 0.2s;
+        display: inline-block;
+    }}
+    
+    .top-banner-btn-outline:hover {{
+        background: rgba(59, 130, 246, 0.1);
+        transform: translateY(-1px);
+    }}
+    
+    /* Website link on right */
+    .top-banner-website {{
+        color: {COLORS["text_muted"]};
         text-decoration: none;
         font-size: 13px;
         font-weight: 500;
-        padding: 6px 12px;
-        border-radius: 6px;
-        transition: all 0.2s;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        background: transparent;
-        border: 1px solid transparent;
+        transition: color 0.2s;
     }}
     
-    .top-banner-link:hover {{
-        color: {COLORS["text_primary"]};
-        background: rgba(99, 102, 241, 0.1);
-        border-color: {COLORS["border"]};
+    .top-banner-website:hover {{
+        color: {COLORS["primary"]};
     }}
     
     .top-banner-cta {{
@@ -555,7 +584,7 @@ def apply_auth_styles():
 # TOP BANNER COMPONENT
 # ===========================================
 
-def render_top_banner(show_cta: bool = True, cta_text: str = "Book a Demo", cta_url: str = None):
+def render_top_banner(show_cta: bool = True, cta_text: str = "Let's Talk", cta_url: str = None):
     """
     Render top banner with links to website, blog, calendly, and optional CTA.
     Call this at the very top of your app, right after apply_global_styles().
@@ -567,27 +596,28 @@ def render_top_banner(show_cta: bool = True, cta_text: str = "Book a Demo", cta_
     """
     cta_link = cta_url or EXTERNAL_LINKS["calendly"]
     
-    cta_html = ""
-    if show_cta:
-        cta_html = f'<a href="{cta_link}" target="_blank" class="top-banner-cta">✨ {cta_text}</a>'
-    
     st.markdown(f"""
     <div class="top-banner">
         <div class="top-banner-links">
-            <a href="{EXTERNAL_LINKS["website"]}" target="_blank" class="top-banner-link">
-                🌐 {EXTERNAL_LINKS.get("website_label", "Website")}
+            <a href="{EXTERNAL_LINKS["website"]}" target="_blank" class="top-banner-btn-pink">
+                Bespoke Services
             </a>
-            <a href="{EXTERNAL_LINKS["blog"]}" target="_blank" class="top-banner-link">
-                📖 Blog
+            <a href="{EXTERNAL_LINKS["blog"]}" target="_blank" class="top-banner-btn-pink">
+                Blog
             </a>
-            <a href="{EXTERNAL_LINKS["calendly"]}" target="_blank" class="top-banner-link">
-                📅 Book a Call
-            </a>
-            <a href="{EXTERNAL_LINKS["contact"]}" target="_blank" class="top-banner-link">
-                💬 Contact
+            <a href="{cta_link}" target="_blank" class="top-banner-btn-outline">
+                {cta_text}
             </a>
         </div>
-        {cta_html}
+        <div class="top-banner-links">
+            <a href="{cta_link}" target="_blank" class="top-banner-website">
+                Book A Demo
+            </a>
+            <span style="color: #6b7280;">|</span>
+            <a href="{EXTERNAL_LINKS["website"]}" target="_blank" class="top-banner-website">
+                sharphuman.com
+            </a>
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
