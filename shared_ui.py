@@ -596,31 +596,25 @@ def render_top_banner(show_cta: bool = True, cta_text: str = "Book a Demo", cta_
     """
     cta_link = cta_url or EXTERNAL_LINKS["calendly"]
     
-    st.markdown(f"""
+    # Build CTA button HTML conditionally
+    cta_html = ""
+    if show_cta:
+        cta_html = f'<a href="{cta_link}" target="_blank" class="top-banner-btn-outline">{cta_text}</a>'
+    
+    banner_html = f"""
     <div class="top-banner">
         <div class="top-banner-links">
-            <a href="{EXTERNAL_LINKS["website"]}" target="_blank" class="top-banner-btn-pink">
-                Bespoke Services
-            </a>
-            <a href="{EXTERNAL_LINKS["blog"]}" target="_blank" class="top-banner-btn-pink">
-                Blog
-            </a>
-            {"" if not show_cta else f'''
-            <a href="{cta_link}" target="_blank" class="top-banner-btn-outline">
-                {cta_text}
-            </a>
-            '''}
+            <a href="{EXTERNAL_LINKS["website"]}" target="_blank" class="top-banner-btn-pink">Bespoke Services</a>
+            <a href="{EXTERNAL_LINKS["blog"]}" target="_blank" class="top-banner-btn-pink">Blog</a>
+            {cta_html}
         </div>
         <div class="top-banner-right">
-            <a href="{EXTERNAL_LINKS["calendly"]}" target="_blank" class="top-banner-btn-blue">
-                Book a Free AI Consultation
-            </a>
-            <a href="{EXTERNAL_LINKS["website"]}" target="_blank" class="top-banner-btn-blue">
-                sharphuman.com
-            </a>
+            <a href="{EXTERNAL_LINKS["calendly"]}" target="_blank" class="top-banner-btn-blue">Book a Free AI Consultation</a>
+            <a href="{EXTERNAL_LINKS["website"]}" target="_blank" class="top-banner-btn-blue">sharphuman.com</a>
         </div>
     </div>
-    """, unsafe_allow_html=True)
+    """
+    st.markdown(banner_html, unsafe_allow_html=True)
 
 def render_promo_banner(
     message: str = "Need bespoke implementation or custom features?",
