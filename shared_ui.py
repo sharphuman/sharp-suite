@@ -25,11 +25,16 @@ try:
     from shared_config import APP_URLS, GOD_PASSWORD
 except ImportError:
     APP_URLS = {
-        "portal": "https://demo.sharphuman.com", "jd": "https://jd.sharphuman.com",
-        "screen": "https://screen.sharphuman.com", "interview": "https://hire.sharphuman.com",
-        "source": "https://outreach.sharphuman.com", "content": "https://content.sharphuman.com",
-        "sales": "https://sales.sharphuman.com", "reach": "https://reach.sharphuman.com",
-        "assistant": "https://assistant.sharphuman.com", "admin": "https://admin.sharphuman.com",
+        "portal": "https://portal.sharphuman.com",
+        "jd": "https://jd.sharphuman.com",
+        "screen": "https://screen.sharphuman.com",
+        "interview": "https://interview.sharphuman.com",
+        "source": "https://source.sharphuman.com",
+        "content": "https://content.sharphuman.com",
+        "sales": "https://sales.sharphuman.com",
+        "reach": "https://reach.sharphuman.com",
+        "assistant": "https://assistant.sharphuman.com",
+        "admin": "https://admin.sharphuman.com",
     }
     GOD_PASSWORD = "G0DHum@n101!!!"
 
@@ -374,85 +379,6 @@ def get_global_css():
     }}
     
     /* Hide broken Material Icon text (keyboard_arrow_down, etc.) */
-    [data-testid="stExpander"] details > summary > span:first-child {{
-        font-size: 0 !important;
-        width: 20px !important;
-        height: 20px !important;
-    }}
-    
-    [data-testid="stExpander"] details > summary > span:first-child::before {{
-        content: "▶" !important;
-        font-size: 12px !important;
-        color: {COLORS["text_muted"]} !important;
-    }}
-    
-    [data-testid="stExpander"] details[open] > summary > span:first-child::before {{
-        content: "▼" !important;
-    }}
-    
-    /* Custom details/summary (recommended alternative to st.expander) */
-    details.sharp-accordion {{
-        background: {COLORS["bg_card"]};
-        border: 1px solid {COLORS["border"]};
-        border-radius: 10px;
-        margin: 8px 0;
-    }}
-    
-    details.sharp-accordion summary {{
-        padding: 14px 18px;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        list-style: none;
-        color: {COLORS["text_primary"]};
-    }}
-    
-    details.sharp-accordion summary::-webkit-details-marker {{
-        display: none;
-    }}
-    
-    details.sharp-accordion > div {{
-        padding: 0 18px 18px;
-        border-top: 1px solid {COLORS["border"]};
-    }}
-    
-    /* ========== DOWNLOAD BUTTONS ========== */
-    .stDownloadButton > button {{
-        background: {COLORS["bg_card"]} !important;
-        border: 1px solid {COLORS["border"]} !important;
-        color: {COLORS["text_secondary"]} !important;
-    }}
-    
-    .stDownloadButton > button:hover {{
-        border-color: {COLORS["primary"]} !important;
-        color: {COLORS["primary"]} !important;
-    }}
-    
-    /* ========== CHECKBOX & RADIO ========== */
-    .stCheckbox, .stRadio {{
-        font-size: {TYPOGRAPHY["size_base"]} !important;
-    }}
-    
-    /* ========== SLIDER ========== */
-    .stSlider {{
-        padding-top: 16px !important;
-    }}
-    
-    /* ========== ALERTS ========== */
-    .stAlert {{
-        border-radius: 10px !important;
-        font-size: {TYPOGRAPHY["size_base"]} !important;
-    }}
-    
-    /* ========== POPOVER (Feedback) ========== */
-    [data-testid="stPopover"] {{
-        background: {COLORS["bg_card"]} !important;
-        border: 1px solid {COLORS["border"]} !important;
-        border-radius: 12px !important;
-    }}
-    
-    /* Hide broken Material Icon text on popover button (expand_more, etc.) */
     [data-testid="stPopover"] > button > div > span:last-child {{
         font-size: 0 !important;
         width: 0 !important;
@@ -521,6 +447,12 @@ def get_global_css():
         gap: 12px;
     }}
     
+    .top-banner-right {{
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }}
+    
     /* Pink filled buttons - matching website exactly */
     .top-banner-btn-pink {{
         background: #db2777;
@@ -551,47 +483,37 @@ def get_global_css():
         font-weight: 600;
         padding: 10px 24px;
         border-radius: 6px;
-        border: 2px solid #60a5fa;
+        border: 2px solid rgba(255, 255, 255, 0.3);
         transition: all 0.2s;
         display: inline-block;
     }}
     
     .top-banner-btn-outline:hover {{
-        background: rgba(96, 165, 250, 0.1);
+        background: rgba(255, 255, 255, 0.1);
+        border-color: rgba(255, 255, 255, 0.5);
         transform: translateY(-1px);
         text-decoration: none !important;
     }}
     
-    /* Website link on right */
-    .top-banner-website {{
-        color: #60a5fa;
+    /* Blue filled buttons for right side */
+    .top-banner-btn-blue {{
+        background: #3b82f6;
+        color: white !important;
         text-decoration: none !important;
         font-size: 14px;
-        font-weight: 500;
-        transition: color 0.2s;
-    }}
-    
-    .top-banner-website:hover {{
-        color: #93c5fd;
-        text-decoration: none !important;
-    }}
-    
-    .top-banner-cta {{
-        background: linear-gradient(135deg, {COLORS["primary"]}, {COLORS["secondary"]});
-        color: white !important;
-        padding: 8px 20px;
-        border-radius: 8px;
-        font-size: 13px;
         font-weight: 600;
-        text-decoration: none;
-        transition: transform 0.2s, box-shadow 0.2s;
+        padding: 10px 24px;
+        border-radius: 6px;
+        transition: all 0.2s;
+        display: inline-block;
         border: none;
     }}
     
-    .top-banner-cta:hover {{
+    .top-banner-btn-blue:hover {{
+        background: #2563eb;
         transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
-        color: white;
+        text-decoration: none !important;
+        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
     }}
     
     /* ========== HIDE STREAMLIT BRANDING ========== */
@@ -658,14 +580,18 @@ def apply_auth_styles():
 # TOP BANNER COMPONENT
 # ===========================================
 
-def render_top_banner(show_cta: bool = True, cta_text: str = "Let's Talk", cta_url: str = None):
+def render_top_banner(show_cta: bool = True, cta_text: str = "Book a Demo", cta_url: str = None):
     """
     Render top banner with links to website, blog, calendly, and optional CTA.
     Call this at the very top of your app, right after apply_global_styles().
     
+    Layout:
+        Left side: Bespoke Services (pink), Blog (pink), Book a Demo (outline)
+        Right side: Book a Free AI Consultation (blue), sharphuman.com (blue)
+    
     Args:
-        show_cta: Whether to show the CTA button
-        cta_text: Text for the CTA button
+        show_cta: Whether to show the CTA button on left side
+        cta_text: Text for the CTA button (default: "Book a Demo")
         cta_url: URL for CTA (defaults to calendly link)
     """
     cta_link = cta_url or EXTERNAL_LINKS["calendly"]
@@ -679,13 +605,20 @@ def render_top_banner(show_cta: bool = True, cta_text: str = "Let's Talk", cta_u
             <a href="{EXTERNAL_LINKS["blog"]}" target="_blank" class="top-banner-btn-pink">
                 Blog
             </a>
+            {"" if not show_cta else f'''
             <a href="{cta_link}" target="_blank" class="top-banner-btn-outline">
                 {cta_text}
             </a>
+            '''}
         </div>
-        <a href="{EXTERNAL_LINKS["website"]}" target="_blank" class="top-banner-website">
-            sharphuman.com
-        </a>
+        <div class="top-banner-right">
+            <a href="{EXTERNAL_LINKS["calendly"]}" target="_blank" class="top-banner-btn-blue">
+                Book a Free AI Consultation
+            </a>
+            <a href="{EXTERNAL_LINKS["website"]}" target="_blank" class="top-banner-btn-blue">
+                sharphuman.com
+            </a>
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -1003,7 +936,7 @@ class StatusIndicator:
     def start(self):
         """Start the status indicator."""
         self.start_time = time.time()
-        self.current_step = 0
+        self.current_step = 1
         self._render()
     
     def update(self, step_index: int = None, custom_message: str = None):
