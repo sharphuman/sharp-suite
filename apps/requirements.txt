@@ -1,0 +1,13 @@
+# Sharp Suite - Combined Requirements
+# Used by all apps when running from repo root
+
+# Core (all apps)
+streamlit>=1.28.0
+requests>=2.31.0
+
+# PDF/Document handling (Interview, Screen, JD)
+PyMuPDF>=1.23.0
+pdfplumber>=0.10.0
+PyPDF2>=3.0.0
+python-docx>=1.1.0
+reportlab>=4.0.0
