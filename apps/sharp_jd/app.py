@@ -5,13 +5,14 @@ import requests
 from datetime import datetime, timedelta
 import secrets
 import json
+import re
+import io
 
 SUPABASE_URL = "https://qkjtprqgblnfftrotyks.supabase.co"
 SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFranRwcnFnYmxuZmZ0cm90eWtzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUzNTgzNDAsImV4cCI6MjA4MDkzNDM0MH0.pVzSq4M5i58zBGl7OPDhNL9qYBcg-bz8MVrBI5MQSkw"
 GOD_PASSWORD = "G0DHum@n101!!!"
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
-# App URLs for navigation
 APP_URLS = {
     "portal": "https://demo.sharphuman.com",
     "jd": "https://jd.sharphuman.com",
@@ -156,6 +157,7 @@ def init_session():
         ('generated_jd', None),
         ('jd_metadata', None),
         ('current_status', None),
+        ('imported_jd_text', None),
     ]
     for k, v in defaults:
         if k not in st.session_state:
@@ -185,6 +187,120 @@ def build_app_url(app_name):
     if base_url and token:
         return f"{base_url}?auth={token}"
     return base_url
+
+# ============================================
+# FILE PROCESSING FUNCTIONS
+# ============================================
+
+def extract_text_from_file(uploaded_file):
+    """Extract text from uploaded files (PDF, DOCX, TXT, JSON)."""
+    file_type = uploaded_file.name.split('.')[-1].lower()
+    content = uploaded_file.read()
+    
+    if file_type == 'txt':
+        return content.decode('utf-8', errors='ignore')
+    
+    elif file_type == 'pdf':
+        try:
+            import fitz  # PyMuPDF
+            pdf = fitz.open(stream=content, filetype="pdf")
+            text = ""
+            for page in pdf:
+                text += page.get_text()
+            return text
+        except ImportError:
+            # Fallback - basic extraction
+            text = content.decode('utf-8', errors='ignore')
+            clean_text = re.sub(r'[^\x20-\x7E\n]', ' ', text)
+            return clean_text
+    
+    elif file_type in ['docx', 'doc']:
+        try:
+            from docx import Document
+            doc = Document(io.BytesIO(content))
+            return '\n'.join([para.text for para in doc.paragraphs])
+        except ImportError:
+            return "[DOCX parsing requires python-docx library]"
+    
+    elif file_type == 'json':
+        try:
+            data = json.loads(content.decode('utf-8'))
+            # Handle various ATS JSON formats
+            if isinstance(data, dict):
+                # Look for common JD fields
+                jd_text = ""
+                for key in ['description', 'job_description', 'jd', 'content', 'text', 'body']:
+                    if key in data:
+                        jd_text = data[key]
+                        break
+                if not jd_text:
+                    # Try to extract title + requirements
+                    parts = []
+                    if data.get('title') or data.get('job_title'):
+                        parts.append(f"Job Title: {data.get('title') or data.get('job_title')}")
+                    if data.get('company'):
+                        parts.append(f"Company: {data.get('company')}")
+                    if data.get('requirements'):
+                        parts.append(f"Requirements: {data.get('requirements')}")
+                    if data.get('responsibilities'):
+                        parts.append(f"Responsibilities: {data.get('responsibilities')}")
+                    if data.get('qualifications'):
+                        parts.append(f"Qualifications: {data.get('qualifications')}")
+                    if data.get('skills'):
+                        skills = data.get('skills')
+                        if isinstance(skills, list):
+                            skills = ', '.join(skills)
+                        parts.append(f"Skills: {skills}")
+                    jd_text = '\n\n'.join(parts) if parts else json.dumps(data, indent=2)
+                return jd_text
+            return json.dumps(data, indent=2)
+        except:
+            return content.decode('utf-8', errors='ignore')
+    
+    return content.decode('utf-8', errors='ignore')
+
+def parse_ats_json(json_text):
+    """Parse JSON from various ATS systems."""
+    try:
+        data = json.loads(json_text)
+        
+        # Common ATS formats
+        jd_info = {
+            'title': '',
+            'company': '',
+            'description': '',
+            'requirements': '',
+            'responsibilities': '',
+            'skills': [],
+            'experience_level': '',
+            'location': '',
+            'salary': ''
+        }
+        
+        if isinstance(data, dict):
+            # Greenhouse format
+            if 'job' in data:
+                data = data['job']
+            
+            # Extract fields
+            jd_info['title'] = data.get('title') or data.get('job_title') or data.get('name', '')
+            jd_info['company'] = data.get('company') or data.get('company_name') or data.get('organization', '')
+            jd_info['description'] = data.get('description') or data.get('job_description') or data.get('content', '')
+            jd_info['requirements'] = data.get('requirements') or data.get('qualifications') or ''
+            jd_info['responsibilities'] = data.get('responsibilities') or data.get('duties') or ''
+            
+            skills = data.get('skills') or data.get('required_skills') or []
+            if isinstance(skills, str):
+                skills = [s.strip() for s in skills.split(',')]
+            jd_info['skills'] = skills
+            
+            jd_info['experience_level'] = data.get('experience_level') or data.get('seniority') or ''
+            jd_info['location'] = data.get('location') or data.get('office_location') or ''
+            jd_info['salary'] = data.get('salary') or data.get('compensation') or ''
+        
+        return jd_info
+    except:
+        return None
 
 # ============================================
 # HISTORY FUNCTIONS
@@ -544,7 +660,7 @@ with header_col2:
         </div>""", unsafe_allow_html=True)
 
 # Main tabs
-tab_create, tab_history = st.tabs(["✏️ Create JD", "📜 History"])
+tab_create, tab_import, tab_history = st.tabs(["✏️ Create JD", "📄 Import/Enhance JD", "📜 History"])
 
 with tab_create:
     # Row 1: Basic Info
@@ -806,6 +922,169 @@ Keep the same general structure and format, but apply the requested changes. Out
                         st.error(refined)
             else:
                 st.warning("Please describe what you'd like to change")
+
+with tab_import:
+    st.markdown("### 📄 Import & Enhance Existing JD")
+    st.markdown("Upload or paste an existing job description to enhance, reformat, or optimize it.")
+    
+    import_source = st.radio("Import Source:", ["📄 Upload File", "📝 Paste Text", "🔗 JSON/ATS Format"], horizontal=True)
+    
+    imported_text = ""
+    imported_metadata = {}
+    
+    if import_source == "📄 Upload File":
+        uploaded_jd = st.file_uploader(
+            "Upload JD (PDF, DOCX, TXT, JSON)",
+            type=['pdf', 'docx', 'doc', 'txt', 'json'],
+            key="jd_file_upload"
+        )
+        if uploaded_jd:
+            imported_text = extract_text_from_file(uploaded_jd)
+            st.success(f"✅ Extracted {len(imported_text)} characters from {uploaded_jd.name}")
+            with st.expander("Preview Extracted Text"):
+                st.text(imported_text[:2000] + "..." if len(imported_text) > 2000 else imported_text)
+    
+    elif import_source == "🔗 JSON/ATS Format":
+        st.markdown("Paste JSON from ATS systems like Greenhouse, Lever, Workday, etc.")
+        json_input = st.text_area(
+            "Paste JSON:",
+            height=200,
+            placeholder='{"title": "Software Engineer", "company": "Acme Corp", "description": "...", "requirements": "...", "skills": ["Python", "AWS"]}'
+        )
+        if json_input:
+            parsed = parse_ats_json(json_input)
+            if parsed:
+                st.success("✅ Successfully parsed ATS JSON")
+                imported_metadata = parsed
+                
+                # Build text from parsed data
+                parts = []
+                if parsed.get('title'):
+                    parts.append(f"**Job Title:** {parsed['title']}")
+                if parsed.get('company'):
+                    parts.append(f"**Company:** {parsed['company']}")
+                if parsed.get('description'):
+                    parts.append(f"\n{parsed['description']}")
+                if parsed.get('requirements'):
+                    parts.append(f"\n**Requirements:**\n{parsed['requirements']}")
+                if parsed.get('responsibilities'):
+                    parts.append(f"\n**Responsibilities:**\n{parsed['responsibilities']}")
+                if parsed.get('skills'):
+                    parts.append(f"\n**Skills:** {', '.join(parsed['skills'])}")
+                
+                imported_text = '\n'.join(parts)
+                
+                with st.expander("Parsed Fields"):
+                    for k, v in parsed.items():
+                        if v:
+                            st.markdown(f"**{k}:** {v}")
+            else:
+                st.error("Could not parse JSON. Please check the format.")
+    
+    else:
+        imported_text = st.text_area(
+            "Paste existing JD:",
+            height=250,
+            placeholder="Paste your existing job description here..."
+        )
+    
+    if imported_text:
+        st.markdown("---")
+        st.markdown("### 🎯 Enhancement Options")
+        
+        enh_col1, enh_col2 = st.columns(2)
+        
+        with enh_col1:
+            enhance_action = st.selectbox("What would you like to do?", [
+                "🔄 Rewrite & Improve",
+                "📊 Optimize for ATS/SEO",
+                "✂️ Make More Concise",
+                "📝 Expand with More Detail",
+                "🎨 Change Tone",
+                "🔀 Reformat for Platform"
+            ])
+            
+            if enhance_action == "🎨 Change Tone":
+                new_tone = st.selectbox("New tone:", ["Professional", "Casual/Startup", "Formal/Corporate", "Friendly", "Bold/Exciting"])
+            elif enhance_action == "🔀 Reformat for Platform":
+                target_platform = st.selectbox("Target platform:", ["LinkedIn", "Indeed", "Company Careers", "Glassdoor"])
+        
+        with enh_col2:
+            output_fmt = st.selectbox("Output Format:", ["Plain Text", "ATS-Ready HTML", "Markdown"], key="enhance_fmt")
+            enhance_word_target = st.slider("Target Word Count:", 200, 1200, 500, step=50, key="enhance_words")
+        
+        additional_instructions = st.text_input(
+            "Additional instructions (optional):",
+            placeholder="e.g. Add a remote work section, emphasize Python skills, include salary range..."
+        )
+        
+        if st.button("✨ Enhance JD", type="primary", use_container_width=True):
+            st.session_state.current_status = "Enhancing..."
+            
+            action_prompts = {
+                "🔄 Rewrite & Improve": "Completely rewrite and improve this job description. Make it more compelling, clearer, and professional while maintaining all key information.",
+                "📊 Optimize for ATS/SEO": "Optimize this job description for ATS systems and SEO. Add relevant keywords, improve scannability, and ensure proper formatting for applicant tracking systems.",
+                "✂️ Make More Concise": "Make this job description more concise and to-the-point. Remove fluff, redundancy, and unnecessary jargon while keeping all essential information.",
+                "📝 Expand with More Detail": "Expand this job description with more detail. Add more specific responsibilities, clearer requirements, and better context about the role and company.",
+                "🎨 Change Tone": f"Rewrite this job description with a {new_tone if enhance_action == '🎨 Change Tone' else 'professional'} tone while maintaining all key information.",
+                "🔀 Reformat for Platform": f"Reformat this job description specifically for {target_platform if enhance_action == '🔀 Reformat for Platform' else 'LinkedIn'}. Optimize length, formatting, and content for that platform's best practices."
+            }
+            
+            format_instructions = {
+                "Plain Text": "Use plain text formatting with clear section headers.",
+                "ATS-Ready HTML": "Format as clean HTML optimized for ATS parsing.",
+                "Markdown": "Format using Markdown with headers and bullet points."
+            }
+            
+            prompt = f"""You are an expert job description writer. {action_prompts.get(enhance_action, action_prompts["🔄 Rewrite & Improve"])}
+
+## ORIGINAL JD:
+{imported_text}
+
+## OUTPUT REQUIREMENTS:
+- Format: {output_fmt}
+- {format_instructions.get(output_fmt, "")}
+- Target length: ~{enhance_word_target} words
+{f"- Additional instructions: {additional_instructions}" if additional_instructions else ""}
+
+Provide only the enhanced job description, no explanations."""
+
+            with st.spinner("✨ Enhancing your job description..."):
+                result, tokens = call_claude(prompt, max_tokens=3000)
+                
+                if not result.startswith("Error"):
+                    # Extract title from original or use default
+                    title_match = re.search(r'(?:job title|position|role)[:\s]*([^\n]+)', imported_text, re.IGNORECASE)
+                    extracted_title = title_match.group(1).strip() if title_match else "Enhanced JD"
+                    
+                    st.session_state.generated_jd = result
+                    st.session_state.jd_metadata = {
+                        "job_title": imported_metadata.get('title') or extracted_title,
+                        "company": imported_metadata.get('company', ''),
+                        "output_format": output_fmt,
+                        "source": "imported",
+                        "enhancement_type": enhance_action
+                    }
+                    st.session_state.current_status = None
+                    st.success("✅ JD enhanced! View in the Create tab or below.")
+                    
+                    # Show result inline
+                    st.markdown("### 📄 Enhanced Job Description")
+                    st.markdown(f'<div class="output-box">{result}</div>', unsafe_allow_html=True)
+                    
+                    dl_col1, dl_col2 = st.columns(2)
+                    with dl_col1:
+                        ext = ".html" if "HTML" in output_fmt else ".md" if "Markdown" in output_fmt else ".txt"
+                        st.download_button("📥 Download Enhanced JD", result, f"enhanced_jd{ext}", use_container_width=True)
+                    with dl_col2:
+                        if st.button("💾 Save to History", key="save_enhanced"):
+                            if st.session_state.user.get("id") != "god":
+                                saved = save_jd_to_history(st.session_state.jd_metadata, result, 75, tokens)
+                                if saved:
+                                    st.success("Saved! ✓")
+                else:
+                    st.error(result)
+                    st.session_state.current_status = None
 
 with tab_history:
     st.markdown("### 📜 Your JD History")
