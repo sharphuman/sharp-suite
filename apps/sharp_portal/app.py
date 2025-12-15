@@ -1,4 +1,4 @@
-"""Sharp Portal - Main Dashboard with Cross-App Auth T """
+"""Sharp Portal - Main Dashboard with Cross-App Auth"""
 import streamlit as st
 import requests
 import os
@@ -304,6 +304,9 @@ def render_auth():
 def render_sidebar():
     """Render sidebar with navigation."""
     with st.sidebar:
+        # DEBUG - show token
+        st.caption(f"🔑 Token: {st.session_state.get('session_token', 'NONE')[:20] if st.session_state.get('session_token') else 'NONE'}...")
+        
         # User info
         st.markdown(f"""
         <div style='padding:12px;background:rgba(99,102,241,0.1);border-radius:8px;margin-bottom:16px;'>
