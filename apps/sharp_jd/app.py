@@ -157,7 +157,7 @@ def init_session():
         ('generated_jd', None),
         ('jd_metadata', None),
         ('current_status', None),
-        ('imported_jd_text', None),
+        ('save_error', None),
     ]
     for k, v in defaults:
         if k not in st.session_state:
@@ -196,23 +196,22 @@ def extract_text_from_file(uploaded_file):
     """Extract text from uploaded files (PDF, DOCX, TXT, JSON)."""
     file_type = uploaded_file.name.split('.')[-1].lower()
     content = uploaded_file.read()
+    uploaded_file.seek(0)
     
     if file_type == 'txt':
         return content.decode('utf-8', errors='ignore')
     
     elif file_type == 'pdf':
         try:
-            import fitz  # PyMuPDF
+            import fitz
             pdf = fitz.open(stream=content, filetype="pdf")
             text = ""
             for page in pdf:
                 text += page.get_text()
             return text
         except ImportError:
-            # Fallback - basic extraction
             text = content.decode('utf-8', errors='ignore')
-            clean_text = re.sub(r'[^\x20-\x7E\n]', ' ', text)
-            return clean_text
+            return re.sub(r'[^\x20-\x7E\n]', ' ', text)
     
     elif file_type in ['docx', 'doc']:
         try:
@@ -225,16 +224,13 @@ def extract_text_from_file(uploaded_file):
     elif file_type == 'json':
         try:
             data = json.loads(content.decode('utf-8'))
-            # Handle various ATS JSON formats
             if isinstance(data, dict):
-                # Look for common JD fields
                 jd_text = ""
                 for key in ['description', 'job_description', 'jd', 'content', 'text', 'body']:
                     if key in data:
                         jd_text = data[key]
                         break
                 if not jd_text:
-                    # Try to extract title + requirements
                     parts = []
                     if data.get('title') or data.get('job_title'):
                         parts.append(f"Job Title: {data.get('title') or data.get('job_title')}")
@@ -244,13 +240,6 @@ def extract_text_from_file(uploaded_file):
                         parts.append(f"Requirements: {data.get('requirements')}")
                     if data.get('responsibilities'):
                         parts.append(f"Responsibilities: {data.get('responsibilities')}")
-                    if data.get('qualifications'):
-                        parts.append(f"Qualifications: {data.get('qualifications')}")
-                    if data.get('skills'):
-                        skills = data.get('skills')
-                        if isinstance(skills, list):
-                            skills = ', '.join(skills)
-                        parts.append(f"Skills: {skills}")
                     jd_text = '\n\n'.join(parts) if parts else json.dumps(data, indent=2)
                 return jd_text
             return json.dumps(data, indent=2)
@@ -259,57 +248,247 @@ def extract_text_from_file(uploaded_file):
     
     return content.decode('utf-8', errors='ignore')
 
-def parse_ats_json(json_text):
-    """Parse JSON from various ATS systems."""
+# ============================================
+# EXPORT FUNCTIONS
+# ============================================
+
+def generate_docx_bytes(jd_text, metadata):
+    """Generate DOCX file bytes."""
     try:
-        data = json.loads(json_text)
+        from docx import Document
+        from docx.shared import Inches, Pt
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
         
-        # Common ATS formats
-        jd_info = {
-            'title': '',
-            'company': '',
-            'description': '',
-            'requirements': '',
-            'responsibilities': '',
-            'skills': [],
-            'experience_level': '',
-            'location': '',
-            'salary': ''
-        }
+        doc = Document()
         
-        if isinstance(data, dict):
-            # Greenhouse format
-            if 'job' in data:
-                data = data['job']
-            
-            # Extract fields
-            jd_info['title'] = data.get('title') or data.get('job_title') or data.get('name', '')
-            jd_info['company'] = data.get('company') or data.get('company_name') or data.get('organization', '')
-            jd_info['description'] = data.get('description') or data.get('job_description') or data.get('content', '')
-            jd_info['requirements'] = data.get('requirements') or data.get('qualifications') or ''
-            jd_info['responsibilities'] = data.get('responsibilities') or data.get('duties') or ''
-            
-            skills = data.get('skills') or data.get('required_skills') or []
-            if isinstance(skills, str):
-                skills = [s.strip() for s in skills.split(',')]
-            jd_info['skills'] = skills
-            
-            jd_info['experience_level'] = data.get('experience_level') or data.get('seniority') or ''
-            jd_info['location'] = data.get('location') or data.get('office_location') or ''
-            jd_info['salary'] = data.get('salary') or data.get('compensation') or ''
+        # Title
+        title = doc.add_heading(metadata.get('job_title', 'Job Description'), 0)
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
         
-        return jd_info
-    except:
+        # Company
+        if metadata.get('company'):
+            company_para = doc.add_paragraph(metadata.get('company'))
+            company_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
+        doc.add_paragraph()  # Spacer
+        
+        # JD Content
+        for line in jd_text.split('\n'):
+            if line.strip():
+                doc.add_paragraph(line)
+        
+        # Footer
+        doc.add_paragraph()
+        footer = doc.add_paragraph(f"Generated: {datetime.now().strftime('%Y-%m-%d')}")
+        footer.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        
+        # Save to bytes
+        buffer = io.BytesIO()
+        doc.save(buffer)
+        buffer.seek(0)
+        return buffer.getvalue()
+    except ImportError:
         return None
+
+def generate_pdf_html(jd_text, metadata):
+    """Generate HTML for PDF export (open in browser, print to PDF)."""
+    title = metadata.get('job_title', 'Job Description')
+    company = metadata.get('company', '')
+    
+    # Convert markdown-style formatting to HTML
+    content_html = jd_text
+    content_html = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', content_html)
+    content_html = re.sub(r'\n', r'<br>', content_html)
+    
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>{title}</title>
+    <style>
+        body {{ 
+            font-family: 'Segoe UI', Arial, sans-serif; 
+            max-width: 800px; 
+            margin: 40px auto; 
+            padding: 40px;
+            color: #333; 
+            line-height: 1.6; 
+        }}
+        .header {{ 
+            border-bottom: 3px solid #6366f1; 
+            padding-bottom: 20px; 
+            margin-bottom: 30px; 
+        }}
+        .header h1 {{ 
+            color: #1f2937; 
+            margin: 0 0 10px 0; 
+            font-size: 28px; 
+        }}
+        .header .company {{ 
+            color: #6366f1; 
+            font-size: 18px; 
+            font-weight: 600; 
+        }}
+        .header .meta {{ 
+            color: #6b7280; 
+            font-size: 14px; 
+            margin-top: 10px; 
+        }}
+        .content {{ 
+            font-size: 15px; 
+        }}
+        .content strong {{ 
+            color: #1f2937; 
+        }}
+        .footer {{ 
+            margin-top: 40px; 
+            padding-top: 20px; 
+            border-top: 1px solid #e5e7eb; 
+            color: #9ca3af; 
+            font-size: 12px; 
+            text-align: right; 
+        }}
+        @media print {{ 
+            body {{ margin: 20px; padding: 20px; }}
+            .header {{ border-bottom-width: 2px; }}
+        }}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>{title}</h1>
+        {f'<div class="company">{company}</div>' if company else ''}
+        <div class="meta">
+            {metadata.get('remote_type', '')} | {metadata.get('experience_level', '')} | {metadata.get('industry', '')}
+        </div>
+    </div>
+    <div class="content">
+        {content_html}
+    </div>
+    <div class="footer">
+        Generated by Sharp JD | {datetime.now().strftime('%Y-%m-%d %H:%M')}
+    </div>
+</body>
+</html>"""
+    return html
+
+def generate_ats_json(jd_text, metadata):
+    """Generate ATS-compatible JSON export."""
+    # Extract sections from JD text
+    sections = {
+        'responsibilities': '',
+        'requirements': '',
+        'benefits': '',
+        'about': ''
+    }
+    
+    jd_lower = jd_text.lower()
+    
+    # Try to extract sections
+    resp_match = re.search(r'responsibilities[:\s]*\n(.*?)(?=\n\n|\nrequirements|\nqualifications|\nbenefits|$)', jd_text, re.IGNORECASE | re.DOTALL)
+    if resp_match:
+        sections['responsibilities'] = resp_match.group(1).strip()
+    
+    req_match = re.search(r'(?:requirements|qualifications)[:\s]*\n(.*?)(?=\n\n|\nresponsibilities|\nbenefits|$)', jd_text, re.IGNORECASE | re.DOTALL)
+    if req_match:
+        sections['requirements'] = req_match.group(1).strip()
+    
+    ben_match = re.search(r'benefits[:\s]*\n(.*?)(?=\n\n|$)', jd_text, re.IGNORECASE | re.DOTALL)
+    if ben_match:
+        sections['benefits'] = ben_match.group(1).strip()
+    
+    # Extract skills (look for bullet points or comma-separated lists)
+    skills = []
+    skill_patterns = [
+        r'(?:proficiency|experience|knowledge|skills?)[:\s]+(?:in\s+)?([^.\n]+)',
+        r'•\s*([A-Z][a-zA-Z+#]+(?:\s+[A-Z][a-zA-Z+#]+)?)',
+    ]
+    for pattern in skill_patterns:
+        matches = re.findall(pattern, jd_text)
+        skills.extend([s.strip() for s in matches if len(s.strip()) > 2])
+    
+    # Build ATS JSON
+    ats_data = {
+        "job_posting": {
+            "title": metadata.get('job_title', ''),
+            "company": metadata.get('company', ''),
+            "location": metadata.get('remote_type', 'Not specified'),
+            "employment_type": "Full-time",
+            "experience_level": metadata.get('experience_level', ''),
+            "industry": metadata.get('industry', ''),
+            "posted_date": datetime.now().strftime('%Y-%m-%d'),
+        },
+        "description": {
+            "full_text": jd_text,
+            "summary": jd_text[:500] + "..." if len(jd_text) > 500 else jd_text,
+            "responsibilities": sections['responsibilities'],
+            "requirements": sections['requirements'],
+            "benefits": sections['benefits'],
+        },
+        "skills": {
+            "required": list(set(skills[:10])),
+            "preferred": list(set(skills[10:20])) if len(skills) > 10 else [],
+        },
+        "compensation": {
+            "salary_range": "Competitive" if not metadata.get('include_salary') else "See description",
+            "benefits_offered": metadata.get('include_benefits', True),
+        },
+        "metadata": {
+            "source": "Sharp JD",
+            "format_version": "1.0",
+            "generated_at": datetime.now().isoformat(),
+            "seo_optimized": metadata.get('seo_optimized', False),
+            "platform_target": metadata.get('platform', 'General'),
+        }
+    }
+    
+    return json.dumps(ats_data, indent=2)
 
 # ============================================
 # HISTORY FUNCTIONS
 # ============================================
 
 def save_jd_to_history(metadata, generated_jd, seo_score, tokens_used):
+    """Save JD to history with proper error handling."""
     user_id = st.session_state.user.get("id") if st.session_state.user else None
-    if not user_id or user_id == "god":
-        return None
+    
+    if not user_id:
+        return None, "No user ID found"
+    
+    if user_id == "god":
+        return None, "History not available in GOD mode"
+    
+    # Build the payload - only include non-None values
+    payload = {
+        "user_id": user_id,
+        "generated_jd": generated_jd,
+        "seo_ats_score": seo_score,
+        "tokens_used": tokens_used or 0
+    }
+    
+    # Add optional fields only if they have values
+    optional_fields = [
+        ("job_title", "job_title"),
+        ("company", "company"),
+        ("user_type", "user_type"),
+        ("experience_level", "experience_level"),
+        ("remote_type", "remote_type"),
+        ("industry", "industry"),
+        ("platform", "platform"),
+        ("output_format", "output_format"),
+        ("tone", "tone"),
+        ("word_count", "word_count"),
+        ("include_salary", "include_salary"),
+        ("include_benefits", "include_benefits"),
+        ("include_diversity", "include_diversity"),
+        ("seo_optimized", "seo_optimized"),
+        ("requirements", "requirements"),
+    ]
+    
+    for meta_key, db_key in optional_fields:
+        value = metadata.get(meta_key)
+        if value is not None:
+            payload[db_key] = value
     
     try:
         r = requests.post(
@@ -320,34 +499,24 @@ def save_jd_to_history(metadata, generated_jd, seo_score, tokens_used):
                 "Content-Type": "application/json",
                 "Prefer": "return=representation"
             },
-            json={
-                "user_id": user_id,
-                "job_title": metadata.get("job_title"),
-                "company": metadata.get("company"),
-                "user_type": metadata.get("user_type"),
-                "experience_level": metadata.get("experience_level"),
-                "remote_type": metadata.get("remote_type"),
-                "industry": metadata.get("industry"),
-                "platform": metadata.get("platform"),
-                "output_format": metadata.get("output_format"),
-                "tone": metadata.get("tone"),
-                "word_count": metadata.get("word_count"),
-                "include_salary": metadata.get("include_salary"),
-                "include_benefits": metadata.get("include_benefits"),
-                "include_diversity": metadata.get("include_diversity"),
-                "seo_optimized": metadata.get("seo_optimized"),
-                "requirements": metadata.get("requirements"),
-                "generated_jd": generated_jd,
-                "seo_ats_score": seo_score,
-                "tokens_used": tokens_used
-            },
+            json=payload,
             timeout=10
         )
+        
         if r.status_code in [200, 201]:
-            return r.json()[0] if r.json() else None
-    except:
-        pass
-    return None
+            result = r.json()
+            return result[0] if result else None, None
+        else:
+            error_msg = f"Status {r.status_code}"
+            try:
+                error_data = r.json()
+                if isinstance(error_data, dict):
+                    error_msg = error_data.get('message', error_data.get('error', str(error_data)))
+            except:
+                error_msg = r.text[:200] if r.text else error_msg
+            return None, error_msg
+    except Exception as e:
+        return None, str(e)
 
 def get_jd_history(limit=20):
     user_id = st.session_state.user.get("id") if st.session_state.user else None
@@ -473,10 +642,8 @@ def calculate_seo_ats_score(jd_text, metadata):
     
     if metadata.get("include_salary"):
         score += 5
-    
     if metadata.get("seo_optimized"):
         score += 5
-    
     if metadata.get("include_diversity") or "equal opportunity" in jd_lower or "diversity" in jd_lower:
         score += 5
     
@@ -487,7 +654,11 @@ def calculate_seo_ats_score(jd_text, metadata):
 # ============================================
 
 def render_auth():
-    st.markdown("""<style>@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap');.stApp{background:linear-gradient(135deg,#0a0a0f,#0f0f1a);}*{font-family:'Nunito',sans-serif!important;}.stTextInput>div>div>input{background:#12121a!important;border:1px solid rgba(99,102,241,0.3)!important;color:white!important;}.stButton>button{background:linear-gradient(135deg,#6366f1,#8b5cf6)!important;color:white!important;border:none!important;}.stTabs [data-baseweb="tab-list"]{background:#12121a;}.stTabs [aria-selected="true"]{background:rgba(99,102,241,0.3)!important;color:white!important;}</style>""", unsafe_allow_html=True)
+    st.markdown("""<style>
+    @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap');
+    .stApp { background: linear-gradient(135deg, #0a0a0f 0%, #0f0f1a 100%); }
+    * { font-family: 'Nunito', sans-serif !important; }
+    </style>""", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 1.3, 1])
     with col2:
         st.markdown("""<div style="text-align:center;padding:40px 0;"><img src="https://sharphuman.com/logo1-3.png" style="width:70px;margin-bottom:16px;"><h1 style="color:white;">Sharp JD</h1><p style="color:#9ca3af;">Job Description Writer</p></div>""", unsafe_allow_html=True)
@@ -518,10 +689,7 @@ def render_auth():
             if st.button("✨ Magic Link", use_container_width=True, key="ml"):
                 if me:
                     r = supabase_magic_link(me)
-                    if r["success"]:
-                        st.success(r["message"])
-                    else:
-                        st.error(r["message"])
+                    st.success(r["message"]) if r["success"] else st.error(r["message"])
         with tab2:
             se = st.text_input("Email", key="se")
             sp = st.text_input("Password", type="password", key="sp")
@@ -533,10 +701,7 @@ def render_auth():
                     st.warning("6+ chars")
                 elif se and sp:
                     r = supabase_sign_up(se, sp)
-                    if r["success"]:
-                        st.success(r["message"])
-                    else:
-                        st.error(r["message"])
+                    st.success(r["message"]) if r["success"] else st.error(r["message"])
 
 def render_sidebar():
     with st.sidebar:
@@ -549,67 +714,34 @@ def render_sidebar():
         """, unsafe_allow_html=True)
         
         st.markdown("#### 🧭 Apps")
-        
         apps = [
-            ("portal", "🏠 Portal"),
-            ("jd", "📝 JD Writer"),
-            ("screen", "🔍 CV Screener"),
-            ("interview", "🎯 Interview"),
-            ("source", "🎣 Sourcing"),
-            ("content", "✍️ Content"),
-            ("sales", "💰 Sales"),
-            ("reach", "🚀 Reach"),
-            ("assistant", "🤖 Assistant"),
+            ("portal", "🏠 Portal"), ("jd", "📝 JD Writer"), ("screen", "🔍 CV Screener"),
+            ("interview", "🎯 Interview"), ("source", "🎣 Sourcing"), ("content", "✍️ Content"),
+            ("sales", "💰 Sales"), ("reach", "🚀 Reach"), ("assistant", "🤖 Assistant"),
         ]
-        
         for app_key, label in apps:
             if app_key == "jd":
                 st.button(f"{label} ◀", disabled=True, use_container_width=True)
             else:
-                url = build_app_url(app_key)
-                st.link_button(label, url, use_container_width=True)
+                st.link_button(label, build_app_url(app_key), use_container_width=True)
         
         if st.session_state.get("is_god") or st.session_state.get("user_plan") == "god":
             st.markdown("---")
             st.link_button("⚙️ Admin", build_app_url("admin"), use_container_width=True)
         
         st.markdown("---")
+        with st.expander("💬 Feedback"):
+            fb_type = st.selectbox("Type", ["General", "Bug", "Feature"], key="fb_type")
+            fb_msg = st.text_area("Message", key="fb_msg", height=80)
+            if st.button("Send", key="fb_send"):
+                if fb_msg:
+                    submit_feedback("jd", fb_type.lower(), 4, fb_msg)
+                    st.success("Thanks! 🙏")
+        
+        st.markdown("---")
         if st.button("🚪 Logout", use_container_width=True):
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
-            st.rerun()
-
-def render_feedback_modal():
-    with st.expander("💬 Send Feedback", expanded=False):
-        feedback_type = st.selectbox("Type", ["General", "Bug Report", "Feature Request", "Complaint", "Praise"], key="fb_type")
-        rating = st.slider("Rating", 1, 5, 4, key="fb_rating")
-        message = st.text_area("Your feedback", placeholder="Tell us what you think...", key="fb_msg")
-        if st.button("Submit Feedback", key="fb_submit"):
-            if message:
-                if submit_feedback("jd", feedback_type.lower().replace(" ", "_"), rating, message):
-                    st.success("Thanks for your feedback! 🙏")
-                else:
-                    st.error("Failed to submit. Please try again.")
-            else:
-                st.warning("Please enter a message")
-
-def render_history_sidebar():
-    st.markdown("---")
-    st.markdown("#### 📜 Recent JDs")
-    
-    history = get_jd_history(10)
-    
-    if not history:
-        st.caption("No saved JDs yet")
-        return
-    
-    for item in history:
-        title = item.get("job_title", "Untitled")[:25]
-        date = item.get("created_at", "")[:10]
-        is_fav = "⭐" if item.get("is_favorite") else ""
-        if st.button(f"{is_fav} {title}", key=f"hist_{item['id']}", use_container_width=True, help=date):
-            st.session_state.generated_jd = item.get("generated_jd")
-            st.session_state.jd_metadata = item
             st.rerun()
 
 # ============================================
@@ -624,46 +756,34 @@ if not st.session_state.authenticated:
     render_auth()
     st.stop()
 
-# Main styles
 st.markdown("""<style>
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap');
 * { font-family: 'Nunito', sans-serif !important; }
 .stApp { background: linear-gradient(135deg, #0a0a0f 0%, #0f0f1a 100%); }
 h1,h2,h3 { color: white !important; }
-.stTextInput > div > div > input, .stTextArea > div > div > textarea, .stSelectbox > div > div > div {
-    background: #12121a !important; border: 1px solid rgba(99,102,241,0.3) !important; color: white !important;
-}
+p, span, label, .stMarkdown { color: #e5e5e5 !important; }
 .stButton > button { background: linear-gradient(135deg, #6366f1, #8b5cf6) !important; color: white !important; border: none !important; }
-.output-box { background: #12121a; border: 1px solid rgba(99,102,241,0.2); border-radius: 12px; padding: 24px; margin: 16px 0; }
-p, span, label { color: #e5e5e5 !important; }
-.status-badge { background: rgba(99,102,241,0.2); border: 1px solid rgba(99,102,241,0.4); border-radius: 8px; padding: 8px 16px; display: inline-block; }
+.stTextInput > div > div > input, .stTextArea > div > div > textarea { 
+    background: rgba(18,18,26,0.8) !important; 
+    border: 1px solid rgba(99,102,241,0.3) !important; 
+    color: white !important; 
+}
+.output-box { background: rgba(18,18,26,0.9); border: 1px solid rgba(99,102,241,0.2); border-radius: 12px; padding: 20px; margin: 10px 0; color: #e5e5e5; white-space: pre-wrap; }
+.metric-card { background: rgba(99,102,241,0.1); border-radius: 10px; padding: 15px; text-align: center; }
 </style>""", unsafe_allow_html=True)
 
-# Sidebar
 render_sidebar()
-with st.sidebar:
-    render_history_sidebar()
-    st.markdown("---")
-    render_feedback_modal()
 
-# Header with status
-header_col1, header_col2 = st.columns([3, 1])
-with header_col1:
-    st.markdown("""<div style="display:flex;align-items:center;gap:12px;padding:20px 0;border-bottom:1px solid rgba(99,102,241,0.2);margin-bottom:24px;">
-        <img src="https://sharphuman.com/logo1-3.png" style="width:45px;">
-        <div><h1 style="margin:0;">Sharp JD</h1><p style="color:#9ca3af;margin:0;">AI-Powered Job Descriptions</p></div>
-    </div>""", unsafe_allow_html=True)
-with header_col2:
-    if st.session_state.current_status:
-        st.markdown(f"""<div style="text-align:right;padding-top:20px;">
-            <div class="status-badge">✨ {st.session_state.current_status}</div>
-        </div>""", unsafe_allow_html=True)
+# Header
+st.markdown("""<div style="display:flex;align-items:center;gap:12px;padding:20px 0;border-bottom:1px solid rgba(99,102,241,0.2);margin-bottom:24px;">
+    <img src="https://sharphuman.com/logo1-3.png" style="width:45px;">
+    <div><h1 style="margin:0;">Sharp JD</h1><p style="color:#9ca3af;margin:0;">AI-Powered Job Descriptions</p></div>
+</div>""", unsafe_allow_html=True)
 
 # Main tabs
 tab_create, tab_import, tab_history = st.tabs(["✏️ Create JD", "📄 Import/Enhance JD", "📜 History"])
 
 with tab_create:
-    # Row 1: Basic Info
     st.markdown("### 📋 Basic Information")
     col1, col2, col3 = st.columns(3)
     
@@ -682,15 +802,13 @@ with tab_create:
         ])
         remote_type = st.selectbox("Work Type", ["Remote", "Hybrid", "On-site"])
 
-    # Row 2: Requirements
     st.markdown("### 📝 Requirements & Details")
     requirements = st.text_area(
         "Key Requirements & Responsibilities", 
         height=120,
-        placeholder="• 5+ years Python experience\n• Team leadership skills\n• Cloud platform expertise (AWS/GCP)\n• Strong communication skills..."
+        placeholder="• 5+ years Python experience\n• Team leadership skills\n• Cloud platform expertise (AWS/GCP)..."
     )
 
-    # Row 3: Output Settings
     st.markdown("### ⚙️ Output Settings")
     col1, col2, col3, col4 = st.columns(4)
     
@@ -699,22 +817,15 @@ with tab_create:
             "LinkedIn", "Indeed", "Company Careers Page", "Glassdoor", 
             "ZipRecruiter", "Monster", "General/Multi-platform"
         ])
-    
     with col2:
-        output_format = st.selectbox("Output Format", [
-            "Plain Text", "ATS-Ready HTML", "Markdown"
-        ])
-    
+        output_format = st.selectbox("Output Format", ["Plain Text", "ATS-Ready HTML", "Markdown"])
     with col3:
         tone = st.selectbox("Tone", ["Professional", "Casual/Startup", "Formal/Corporate", "Friendly", "Bold/Exciting"])
-    
     with col4:
         word_count = st.slider("Target Word Count", 200, 1200, 500, step=50)
 
-    # Row 4: Options
     st.markdown("### 🎯 Include Sections")
     opt_col1, opt_col2, opt_col3, opt_col4 = st.columns(4)
-    
     with opt_col1:
         include_salary = st.checkbox("💰 Salary Range", value=False)
     with opt_col2:
@@ -724,32 +835,28 @@ with tab_create:
     with opt_col4:
         seo_optimized = st.checkbox("🔍 SEO Optimized", value=True)
 
-    # Generate Button
     st.markdown("---")
     
     if st.button("📝 Generate Job Description", type="primary", use_container_width=True):
         if not job_title:
             st.warning("Please enter a job title")
         else:
-            st.session_state.current_status = "Crafting your JD..."
-            
             user_context = "an external recruiter at a staffing agency" if "Recruiter" in user_type else "an internal HR/TA professional"
             
             format_instructions = {
                 "Plain Text": "Use plain text formatting with clear section headers.",
-                "ATS-Ready HTML": "Format as clean HTML that's optimized for ATS parsing. Use semantic tags like <h2>, <h3>, <ul>, <li>.",
-                "Markdown": "Format using Markdown with headers (##), bullet points, and bold text."
+                "ATS-Ready HTML": "Format as clean HTML optimized for ATS parsing.",
+                "Markdown": "Format using Markdown with headers and bullet points."
             }
             
             platform_tips = {
-                "LinkedIn": "Optimize for LinkedIn's job posting format. Keep it scannable with short paragraphs. Use industry keywords for search visibility.",
-                "Indeed": "Front-load important information. Indeed users scan quickly. Include salary if possible for better visibility.",
-                "Company Careers Page": "Can be more detailed and branded. Include company culture and values.",
-                "Glassdoor": "Be transparent and detailed. Glassdoor users research thoroughly.",
-                "General/Multi-platform": "Create a versatile JD that works across multiple platforms."
+                "LinkedIn": "Optimize for LinkedIn's format. Keep scannable with short paragraphs.",
+                "Indeed": "Front-load important information. Indeed users scan quickly.",
+                "Company Careers Page": "Can be more detailed and branded.",
+                "General/Multi-platform": "Create a versatile JD that works across platforms."
             }
             
-            prompt = f"""You are an expert job description writer. Write a compelling job description with the following specifications:
+            prompt = f"""You are an expert job description writer. Write a compelling job description:
 
 **Context:** I am {user_context} writing this JD.
 
@@ -764,28 +871,26 @@ with tab_create:
 {requirements or "Standard requirements for this role level"}
 
 **Output Specifications:**
-- Target Platform: {platform}
-- {platform_tips.get(platform, "")}
-- Format: {output_format}
-- {format_instructions.get(output_format, "")}
+- Target Platform: {platform} - {platform_tips.get(platform, "")}
+- Format: {output_format} - {format_instructions.get(output_format, "")}
 - Tone: {tone}
-- Target Length: Approximately {word_count} words
+- Target Length: ~{word_count} words
 
 **Sections to Include:**
 - About the Company (brief, compelling)
 - About the Role
 - Key Responsibilities (5-7 bullet points)
 - Requirements (Must-have and Nice-to-have separated)
-{"- Salary Range: Include a placeholder like '$X - $Y based on experience'" if include_salary else ""}
+{"- Salary Range: Include placeholder like '$X - $Y based on experience'" if include_salary else ""}
 {"- Benefits & Perks section" if include_benefits else ""}
 {"- Equal Opportunity / Diversity statement" if include_diversity else ""}
 - How to Apply
 
-{"**SEO Optimization:** Include relevant industry keywords naturally throughout. Optimize for job board search algorithms." if seo_optimized else ""}
+{"**SEO Optimization:** Include relevant keywords naturally throughout." if seo_optimized else ""}
 
 Write the job description now. Make it compelling, clear, and professional."""
 
-            with st.spinner("✨ Crafting your job description... Analyzing role requirements and industry standards."):
+            with st.spinner("✨ Crafting your job description..."):
                 result, tokens = call_claude(prompt, max_tokens=3000)
                 
                 if not result.startswith("Error"):
@@ -806,104 +911,142 @@ Write the job description now. Make it compelling, clear, and professional."""
                         "seo_optimized": seo_optimized,
                         "requirements": requirements
                     }
-                    
                     st.session_state.generated_jd = result
                     st.session_state.jd_metadata = metadata
-                    st.session_state.current_status = None
                     st.rerun()
                 else:
                     st.error(result)
-                    st.session_state.current_status = None
 
     # Display Generated JD
     if st.session_state.generated_jd:
         st.markdown("---")
         st.markdown("### 📄 Generated Job Description")
         
-        seo_score = calculate_seo_ats_score(st.session_state.generated_jd, st.session_state.jd_metadata or {})
+        metadata = st.session_state.jd_metadata or {}
+        seo_score = calculate_seo_ats_score(st.session_state.generated_jd, metadata)
         word_count_actual = len(st.session_state.generated_jd.split())
         char_count = len(st.session_state.generated_jd)
         
+        # Stats
         stat_col1, stat_col2, stat_col3, stat_col4 = st.columns(4)
         with stat_col1:
             score_color = "#10b981" if seo_score >= 70 else "#f59e0b" if seo_score >= 50 else "#ef4444"
-            st.markdown(f"""<div style="text-align:center;">
-                <p style="color:#9ca3af;margin:0;font-size:0.75rem;">SEO/ATS Score</p>
+            st.markdown(f"""<div class="metric-card">
+                <p style="color:#9ca3af;margin:0;font-size:0.7rem;">SEO/ATS Score</p>
                 <p style="color:{score_color};font-size:1.5rem;font-weight:bold;margin:0;">{seo_score}/100</p>
             </div>""", unsafe_allow_html=True)
         with stat_col2:
-            st.markdown(f"""<div style="text-align:center;">
-                <p style="color:#9ca3af;margin:0;font-size:0.75rem;">Word Count</p>
+            st.markdown(f"""<div class="metric-card">
+                <p style="color:#9ca3af;margin:0;font-size:0.7rem;">Word Count</p>
                 <p style="color:white;font-size:1.5rem;font-weight:bold;margin:0;">{word_count_actual}</p>
             </div>""", unsafe_allow_html=True)
         with stat_col3:
-            st.markdown(f"""<div style="text-align:center;">
-                <p style="color:#9ca3af;margin:0;font-size:0.75rem;">Characters</p>
+            st.markdown(f"""<div class="metric-card">
+                <p style="color:#9ca3af;margin:0;font-size:0.7rem;">Characters</p>
                 <p style="color:white;font-size:1.5rem;font-weight:bold;margin:0;">{char_count:,}</p>
             </div>""", unsafe_allow_html=True)
         with stat_col4:
-            st.markdown(f"""<div style="text-align:center;">
-                <p style="color:#9ca3af;margin:0;font-size:0.75rem;">Format</p>
-                <p style="color:white;font-size:1rem;font-weight:bold;margin:0;">{st.session_state.jd_metadata.get('output_format', 'Plain Text') if st.session_state.jd_metadata else 'Plain Text'}</p>
+            st.markdown(f"""<div class="metric-card">
+                <p style="color:#9ca3af;margin:0;font-size:0.7rem;">Format</p>
+                <p style="color:white;font-size:1rem;font-weight:bold;margin:0;">{metadata.get('output_format', 'Plain Text')}</p>
             </div>""", unsafe_allow_html=True)
         
         st.markdown("")
         st.markdown(f'<div class="output-box">{st.session_state.generated_jd}</div>', unsafe_allow_html=True)
         
-        btn_col1, btn_col2, btn_col3, btn_col4 = st.columns(4)
+        # Export Options
+        st.markdown("### 📥 Export Options")
+        exp_col1, exp_col2, exp_col3, exp_col4, exp_col5 = st.columns(5)
         
-        with btn_col1:
-            fmt = st.session_state.jd_metadata.get('output_format', 'Plain Text') if st.session_state.jd_metadata else 'Plain Text'
-            ext = ".html" if "HTML" in fmt else ".md" if "Markdown" in fmt else ".txt"
-            mime = "text/html" if "HTML" in fmt else "text/markdown" if "Markdown" in fmt else "text/plain"
-            
+        with exp_col1:
+            # Plain text
             st.download_button(
-                "📥 Download",
+                "📄 TXT",
                 st.session_state.generated_jd,
-                file_name=f"job_description_{job_title.lower().replace(' ', '_') if job_title else 'jd'}{ext}",
-                mime=mime,
+                file_name=f"jd_{metadata.get('job_title', 'job').lower().replace(' ', '_')}.txt",
+                mime="text/plain",
                 use_container_width=True
             )
         
-        with btn_col2:
-            if st.button("📋 Copy to Clipboard", use_container_width=True):
-                st.code(st.session_state.generated_jd, language=None)
-                st.info("👆 Select all and copy (Ctrl+A, Ctrl+C)")
+        with exp_col2:
+            # HTML/PDF
+            pdf_html = generate_pdf_html(st.session_state.generated_jd, metadata)
+            st.download_button(
+                "📑 HTML/PDF",
+                pdf_html,
+                file_name=f"jd_{metadata.get('job_title', 'job').lower().replace(' ', '_')}.html",
+                mime="text/html",
+                use_container_width=True,
+                help="Open in browser, then Print → Save as PDF"
+            )
         
-        with btn_col3:
+        with exp_col3:
+            # DOCX
+            docx_bytes = generate_docx_bytes(st.session_state.generated_jd, metadata)
+            if docx_bytes:
+                st.download_button(
+                    "📝 DOCX",
+                    docx_bytes,
+                    file_name=f"jd_{metadata.get('job_title', 'job').lower().replace(' ', '_')}.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    use_container_width=True
+                )
+            else:
+                st.button("📝 DOCX", disabled=True, use_container_width=True, help="Install python-docx for DOCX export")
+        
+        with exp_col4:
+            # ATS JSON
+            ats_json = generate_ats_json(st.session_state.generated_jd, metadata)
+            st.download_button(
+                "🔗 ATS JSON",
+                ats_json,
+                file_name=f"jd_{metadata.get('job_title', 'job').lower().replace(' ', '_')}_ats.json",
+                mime="application/json",
+                use_container_width=True
+            )
+        
+        with exp_col5:
+            # Markdown
+            st.download_button(
+                "📋 Markdown",
+                st.session_state.generated_jd,
+                file_name=f"jd_{metadata.get('job_title', 'job').lower().replace(' ', '_')}.md",
+                mime="text/markdown",
+                use_container_width=True
+            )
+        
+        # Action buttons
+        st.markdown("### 💾 Actions")
+        act_col1, act_col2, act_col3 = st.columns(3)
+        
+        with act_col1:
             if st.button("💾 Save to History", use_container_width=True):
-                if st.session_state.user.get("id") != "god":
-                    saved = save_jd_to_history(
-                        st.session_state.jd_metadata or {},
-                        st.session_state.generated_jd,
-                        seo_score,
-                        0
-                    )
-                    if saved:
-                        st.success("Saved to history! ✓")
-                    else:
-                        st.error("Failed to save")
+                saved, error = save_jd_to_history(metadata, st.session_state.generated_jd, seo_score, 0)
+                if saved:
+                    st.success("✅ Saved to history!")
                 else:
-                    st.warning("History not available in GOD mode")
+                    st.error(f"Failed to save: {error}")
         
-        with btn_col4:
+        with act_col2:
+            if st.button("📤 Send to Screener", use_container_width=True):
+                st.info("Feature coming soon - will open CV Screener with this JD loaded")
+        
+        with act_col3:
             if st.button("🔄 Start New", use_container_width=True):
                 st.session_state.generated_jd = None
                 st.session_state.jd_metadata = None
                 st.rerun()
         
+        # Refinement
         st.markdown("---")
         st.markdown("### ✏️ Refine This JD")
-        
         refine_prompt = st.text_input(
             "What would you like to change?",
-            placeholder="e.g. Make it shorter, add more technical requirements, change tone to more casual..."
+            placeholder="e.g. Make it shorter, add more technical requirements, change tone..."
         )
         
         if st.button("✨ Apply Changes", use_container_width=True):
             if refine_prompt:
-                st.session_state.current_status = "Refining..."
-                
                 refine_full_prompt = f"""Here is a job description:
 
 {st.session_state.generated_jd}
@@ -916,7 +1059,6 @@ Keep the same general structure and format, but apply the requested changes. Out
                     refined, _ = call_claude(refine_full_prompt)
                     if not refined.startswith("Error"):
                         st.session_state.generated_jd = refined
-                        st.session_state.current_status = None
                         st.rerun()
                     else:
                         st.error(refined)
@@ -930,181 +1072,103 @@ with tab_import:
     import_source = st.radio("Import Source:", ["📄 Upload File", "📝 Paste Text", "🔗 JSON/ATS Format"], horizontal=True)
     
     imported_text = ""
-    imported_metadata = {}
     
     if import_source == "📄 Upload File":
-        uploaded_jd = st.file_uploader(
-            "Upload JD (PDF, DOCX, TXT, JSON)",
-            type=['pdf', 'docx', 'doc', 'txt', 'json'],
-            key="jd_file_upload"
-        )
+        uploaded_jd = st.file_uploader("Upload JD (PDF, DOCX, TXT, JSON)", type=['pdf', 'docx', 'doc', 'txt', 'json'], key="jd_file_upload")
         if uploaded_jd:
             imported_text = extract_text_from_file(uploaded_jd)
             st.success(f"✅ Extracted {len(imported_text)} characters from {uploaded_jd.name}")
-            with st.expander("Preview Extracted Text"):
-                st.text(imported_text[:2000] + "..." if len(imported_text) > 2000 else imported_text)
+            if st.checkbox("Show extracted text"):
+                st.text_area("Extracted:", imported_text[:2000], height=150, disabled=True)
     
     elif import_source == "🔗 JSON/ATS Format":
         st.markdown("Paste JSON from ATS systems like Greenhouse, Lever, Workday, etc.")
-        json_input = st.text_area(
-            "Paste JSON:",
-            height=200,
-            placeholder='{"title": "Software Engineer", "company": "Acme Corp", "description": "...", "requirements": "...", "skills": ["Python", "AWS"]}'
-        )
+        json_input = st.text_area("Paste JSON:", height=200, placeholder='{"title": "...", "description": "..."}')
         if json_input:
-            parsed = parse_ats_json(json_input)
-            if parsed:
-                st.success("✅ Successfully parsed ATS JSON")
-                imported_metadata = parsed
-                
-                # Build text from parsed data
-                parts = []
-                if parsed.get('title'):
-                    parts.append(f"**Job Title:** {parsed['title']}")
-                if parsed.get('company'):
-                    parts.append(f"**Company:** {parsed['company']}")
-                if parsed.get('description'):
-                    parts.append(f"\n{parsed['description']}")
-                if parsed.get('requirements'):
-                    parts.append(f"\n**Requirements:**\n{parsed['requirements']}")
-                if parsed.get('responsibilities'):
-                    parts.append(f"\n**Responsibilities:**\n{parsed['responsibilities']}")
-                if parsed.get('skills'):
-                    parts.append(f"\n**Skills:** {', '.join(parsed['skills'])}")
-                
-                imported_text = '\n'.join(parts)
-                
-                with st.expander("Parsed Fields"):
-                    for k, v in parsed.items():
-                        if v:
-                            st.markdown(f"**{k}:** {v}")
-            else:
-                st.error("Could not parse JSON. Please check the format.")
-    
+            try:
+                data = json.loads(json_input)
+                st.success("✅ Valid JSON")
+                # Extract text
+                if isinstance(data, dict):
+                    for key in ['description', 'job_description', 'content', 'text']:
+                        if key in data:
+                            imported_text = data[key]
+                            break
+                    if not imported_text:
+                        imported_text = json.dumps(data, indent=2)
+            except:
+                st.error("Invalid JSON format")
     else:
-        imported_text = st.text_area(
-            "Paste existing JD:",
-            height=250,
-            placeholder="Paste your existing job description here..."
-        )
+        imported_text = st.text_area("Paste existing JD:", height=250, placeholder="Paste your existing job description here...")
     
     if imported_text:
         st.markdown("---")
         st.markdown("### 🎯 Enhancement Options")
         
+        enhance_action = st.selectbox("What would you like to do?", [
+            "🔄 Rewrite & Improve",
+            "📊 Optimize for ATS/SEO",
+            "✂️ Make More Concise",
+            "📝 Expand with More Detail",
+            "🎨 Change Tone",
+            "🔀 Reformat for Platform"
+        ])
+        
         enh_col1, enh_col2 = st.columns(2)
-        
         with enh_col1:
-            enhance_action = st.selectbox("What would you like to do?", [
-                "🔄 Rewrite & Improve",
-                "📊 Optimize for ATS/SEO",
-                "✂️ Make More Concise",
-                "📝 Expand with More Detail",
-                "🎨 Change Tone",
-                "🔀 Reformat for Platform"
-            ])
-            
             if enhance_action == "🎨 Change Tone":
-                new_tone = st.selectbox("New tone:", ["Professional", "Casual/Startup", "Formal/Corporate", "Friendly", "Bold/Exciting"])
+                new_tone = st.selectbox("New tone:", ["Professional", "Casual/Startup", "Formal", "Friendly"])
             elif enhance_action == "🔀 Reformat for Platform":
-                target_platform = st.selectbox("Target platform:", ["LinkedIn", "Indeed", "Company Careers", "Glassdoor"])
-        
+                target_platform = st.selectbox("Target platform:", ["LinkedIn", "Indeed", "Company Careers"])
         with enh_col2:
-            output_fmt = st.selectbox("Output Format:", ["Plain Text", "ATS-Ready HTML", "Markdown"], key="enhance_fmt")
-            enhance_word_target = st.slider("Target Word Count:", 200, 1200, 500, step=50, key="enhance_words")
-        
-        additional_instructions = st.text_input(
-            "Additional instructions (optional):",
-            placeholder="e.g. Add a remote work section, emphasize Python skills, include salary range..."
-        )
+            output_fmt = st.selectbox("Output Format:", ["Plain Text", "HTML", "Markdown"], key="enhance_fmt")
         
         if st.button("✨ Enhance JD", type="primary", use_container_width=True):
-            st.session_state.current_status = "Enhancing..."
-            
             action_prompts = {
-                "🔄 Rewrite & Improve": "Completely rewrite and improve this job description. Make it more compelling, clearer, and professional while maintaining all key information.",
-                "📊 Optimize for ATS/SEO": "Optimize this job description for ATS systems and SEO. Add relevant keywords, improve scannability, and ensure proper formatting for applicant tracking systems.",
-                "✂️ Make More Concise": "Make this job description more concise and to-the-point. Remove fluff, redundancy, and unnecessary jargon while keeping all essential information.",
-                "📝 Expand with More Detail": "Expand this job description with more detail. Add more specific responsibilities, clearer requirements, and better context about the role and company.",
-                "🎨 Change Tone": f"Rewrite this job description with a {new_tone if enhance_action == '🎨 Change Tone' else 'professional'} tone while maintaining all key information.",
-                "🔀 Reformat for Platform": f"Reformat this job description specifically for {target_platform if enhance_action == '🔀 Reformat for Platform' else 'LinkedIn'}. Optimize length, formatting, and content for that platform's best practices."
+                "🔄 Rewrite & Improve": "Completely rewrite and improve this job description.",
+                "📊 Optimize for ATS/SEO": "Optimize for ATS systems and SEO with relevant keywords.",
+                "✂️ Make More Concise": "Make more concise, remove fluff while keeping essentials.",
+                "📝 Expand with More Detail": "Expand with more specific details and context.",
+                "🎨 Change Tone": f"Rewrite with a {new_tone if enhance_action == '🎨 Change Tone' else 'professional'} tone.",
+                "🔀 Reformat for Platform": f"Reformat for {target_platform if enhance_action == '🔀 Reformat for Platform' else 'LinkedIn'}."
             }
             
-            format_instructions = {
-                "Plain Text": "Use plain text formatting with clear section headers.",
-                "ATS-Ready HTML": "Format as clean HTML optimized for ATS parsing.",
-                "Markdown": "Format using Markdown with headers and bullet points."
-            }
-            
-            prompt = f"""You are an expert job description writer. {action_prompts.get(enhance_action, action_prompts["🔄 Rewrite & Improve"])}
+            prompt = f"""{action_prompts.get(enhance_action, action_prompts["🔄 Rewrite & Improve"])}
 
 ## ORIGINAL JD:
 {imported_text}
 
-## OUTPUT REQUIREMENTS:
-- Format: {output_fmt}
-- {format_instructions.get(output_fmt, "")}
-- Target length: ~{enhance_word_target} words
-{f"- Additional instructions: {additional_instructions}" if additional_instructions else ""}
+## OUTPUT FORMAT: {output_fmt}
 
-Provide only the enhanced job description, no explanations."""
+Provide only the enhanced job description."""
 
-            with st.spinner("✨ Enhancing your job description..."):
-                result, tokens = call_claude(prompt, max_tokens=3000)
+            with st.spinner("✨ Enhancing..."):
+                result, _ = call_claude(prompt, max_tokens=3000)
                 
                 if not result.startswith("Error"):
-                    # Extract title from original or use default
-                    title_match = re.search(r'(?:job title|position|role)[:\s]*([^\n]+)', imported_text, re.IGNORECASE)
-                    extracted_title = title_match.group(1).strip() if title_match else "Enhanced JD"
-                    
                     st.session_state.generated_jd = result
-                    st.session_state.jd_metadata = {
-                        "job_title": imported_metadata.get('title') or extracted_title,
-                        "company": imported_metadata.get('company', ''),
-                        "output_format": output_fmt,
-                        "source": "imported",
-                        "enhancement_type": enhance_action
-                    }
-                    st.session_state.current_status = None
-                    st.success("✅ JD enhanced! View in the Create tab or below.")
-                    
-                    # Show result inline
-                    st.markdown("### 📄 Enhanced Job Description")
+                    st.session_state.jd_metadata = {"job_title": "Enhanced JD", "output_format": output_fmt}
+                    st.success("✅ JD enhanced! See Create tab for full options.")
                     st.markdown(f'<div class="output-box">{result}</div>', unsafe_allow_html=True)
-                    
-                    dl_col1, dl_col2 = st.columns(2)
-                    with dl_col1:
-                        ext = ".html" if "HTML" in output_fmt else ".md" if "Markdown" in output_fmt else ".txt"
-                        st.download_button("📥 Download Enhanced JD", result, f"enhanced_jd{ext}", use_container_width=True)
-                    with dl_col2:
-                        if st.button("💾 Save to History", key="save_enhanced"):
-                            if st.session_state.user.get("id") != "god":
-                                saved = save_jd_to_history(st.session_state.jd_metadata, result, 75, tokens)
-                                if saved:
-                                    st.success("Saved! ✓")
                 else:
                     st.error(result)
-                    st.session_state.current_status = None
 
 with tab_history:
     st.markdown("### 📜 Your JD History")
     
     if st.session_state.user.get("id") == "god":
-        st.info("History is not available in GOD mode. Log in with a regular account to save and view history.")
+        st.info("History is not available in GOD mode. Log in with a regular account.")
     else:
         history = get_jd_history(50)
         
         if not history:
             st.markdown("""<div style="text-align:center;padding:60px;color:#6b7280;">
                 <p style="font-size:1.2rem;">📝 No saved JDs yet</p>
-                <p>Generate your first job description and save it to see it here!</p>
+                <p>Generate and save a job description to see it here!</p>
             </div>""", unsafe_allow_html=True)
         else:
-            filter_col1, filter_col2 = st.columns([2, 1])
-            with filter_col1:
-                search = st.text_input("🔍 Search", placeholder="Search by job title...")
-            with filter_col2:
-                show_favorites = st.checkbox("⭐ Favorites only")
+            search = st.text_input("🔍 Search", placeholder="Search by job title...")
+            show_favorites = st.checkbox("⭐ Favorites only")
             
             filtered = history
             if search:
@@ -1113,12 +1177,10 @@ with tab_history:
                 filtered = [h for h in filtered if h.get("is_favorite")]
             
             for item in filtered:
-                with st.expander(f"{'⭐ ' if item.get('is_favorite') else ''}{item.get('job_title', 'Untitled')} - {item.get('company', 'No company')} ({item.get('created_at', '')[:10]})"):
-                    st.markdown(f"""
-                    **Platform:** {item.get('platform', 'N/A')} | **Format:** {item.get('output_format', 'N/A')} | **Score:** {item.get('seo_ats_score', 'N/A')}/100
-                    """)
+                with st.expander(f"{'⭐ ' if item.get('is_favorite') else ''}{item.get('job_title', 'Untitled')} - {item.get('company', 'N/A')} ({item.get('created_at', '')[:10]})"):
+                    st.markdown(f"**Platform:** {item.get('platform', 'N/A')} | **Format:** {item.get('output_format', 'N/A')} | **Score:** {item.get('seo_ats_score', 'N/A')}/100")
                     
-                    st.markdown(f'<div class="output-box">{item.get("generated_jd", "")[:500]}...</div>', unsafe_allow_html=True)
+                    st.text_area("Content:", item.get("generated_jd", "")[:500] + "...", height=100, disabled=True, key=f"preview_{item['id']}")
                     
                     col1, col2, col3, col4 = st.columns(4)
                     with col1:
@@ -1128,13 +1190,12 @@ with tab_history:
                             st.rerun()
                     with col2:
                         is_fav = item.get("is_favorite", False)
-                        if st.button("⭐ Unfavorite" if is_fav else "☆ Favorite", key=f"fav_{item['id']}", use_container_width=True):
+                        if st.button("⭐" if not is_fav else "★", key=f"fav_{item['id']}", use_container_width=True):
                             toggle_favorite(item['id'], not is_fav)
                             st.rerun()
                     with col3:
-                        if st.button("📤 To Screener", key=f"screen_{item['id']}", use_container_width=True):
-                            st.info(f"Use this JD in CV Screener: ID {item['id'][:8]}...")
+                        st.download_button("📥", item.get("generated_jd", ""), f"jd_{item['id'][:8]}.txt", use_container_width=True)
                     with col4:
-                        if st.button("🗑️ Delete", key=f"del_{item['id']}", use_container_width=True):
+                        if st.button("🗑️", key=f"del_{item['id']}", use_container_width=True):
                             delete_jd_history(item['id'])
                             st.rerun()
