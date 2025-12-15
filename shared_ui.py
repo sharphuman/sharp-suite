@@ -66,7 +66,7 @@ COLORS = {
     "bg_sidebar": "#1a1a1a",
     "bg_input": "#2a2a2a",
     "bg_hover": "#333333",
-    "bg_banner": "#2d2d2d",
+    "bg_banner": "#1a1a1a",
     
     # Text
     "text_primary": "#ffffff",
@@ -504,7 +504,7 @@ def get_global_css():
     
     /* ========== TOP BANNER ========== */
     .top-banner {{
-        background: #2d2d2d;
+        background: #1a1a1a;
         border-bottom: 1px solid {COLORS["border"]};
         padding: 12px 24px;
         display: flex;
