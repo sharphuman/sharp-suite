@@ -60,13 +60,13 @@ COLORS = {
     "pink_light": "#ec4899",
     "pink_dark": "#be185d",
     
-    # Background (matching website)
-    "bg_dark": "#0c0c10",
-    "bg_card": "#12121a",
-    "bg_sidebar": "#0c0c10",
-    "bg_input": "#1a1a24",
-    "bg_hover": "#1f1f2e",
-    "bg_banner": "#2d2d2d",      # Top banner background like website
+    # Background - ALL dark gray like website
+    "bg_dark": "#2d2d2d",
+    "bg_card": "#2d2d2d",
+    "bg_sidebar": "#2d2d2d",
+    "bg_input": "#3a3a3a",
+    "bg_hover": "#404040",
+    "bg_banner": "#2d2d2d",
     
     # Text
     "text_primary": "#ffffff",
@@ -81,9 +81,9 @@ COLORS = {
     "info": "#3b82f6",
     
     # Borders
-    "border": "rgba(255, 255, 255, 0.08)",
-    "border_light": "rgba(255, 255, 255, 0.12)",
-    "border_card": "rgba(99, 102, 241, 0.15)",
+    "border": "rgba(255, 255, 255, 0.1)",
+    "border_light": "rgba(255, 255, 255, 0.15)",
+    "border_card": "rgba(255, 255, 255, 0.1)",
 }
 
 TYPOGRAPHY = {
@@ -218,7 +218,7 @@ def get_global_css():
         background: {COLORS["primary"]} !important;
         color: {COLORS["text_primary"]} !important;
         border: none !important;
-        border-radius: 8px !important;
+        border-radius: 6px !important;
         font-weight: 600 !important;
         font-size: {TYPOGRAPHY["size_base"]} !important;
         padding: 12px 24px !important;
@@ -239,10 +239,10 @@ def get_global_css():
     
     /* Download buttons - subtle style */
     .stDownloadButton > button {{
-        background: {COLORS["bg_card"]} !important;
+        background: {COLORS["bg_input"]} !important;
         border: 1px solid {COLORS["border_light"]} !important;
         color: {COLORS["text_secondary"]} !important;
-        border-radius: 8px !important;
+        border-radius: 6px !important;
     }}
     
     .stDownloadButton > button:hover {{
@@ -252,10 +252,10 @@ def get_global_css():
     
     /* Secondary/Link buttons */
     .stLinkButton > a {{
-        background: {COLORS["bg_card"]} !important;
-        border: 1px solid {COLORS["border_card"]} !important;
+        background: {COLORS["bg_input"]} !important;
+        border: 1px solid {COLORS["border"]} !important;
         color: {COLORS["text_secondary"]} !important;
-        border-radius: 8px !important;
+        border-radius: 6px !important;
         font-size: {TYPOGRAPHY["size_base"]} !important;
     }}
     
