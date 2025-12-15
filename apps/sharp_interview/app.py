@@ -738,21 +738,38 @@ with tab_scorecard:
                 st.rerun()
 
 # ============================================
-# FLOATING FEEDBACK (Bottom of page)
+# FLOATING FEEDBACK (Clean popover)
 # ============================================
-st.markdown("---")
-with st.container():
-    fb_col1, fb_col2, fb_col3 = st.columns([2, 1, 1])
-    with fb_col3:
-        if st.checkbox("💬 Feedback", key="show_fb"):
-            fb_type = st.selectbox("Type", ["Bug", "Feature", "General"], key="fb_type")
-            fb_msg = st.text_area("Message", height=80, key="fb_msg", placeholder="Your feedback...")
-            if st.button("Submit Feedback", key="fb_submit"):
-                if fb_msg:
-                    success = submit_feedback("interview", fb_type.lower(), fb_msg)
-                    if success:
-                        st.success("Thanks for your feedback! 🙏")
-                    else:
-                        st.error("Failed to submit. Please try again.")
+st.markdown('<div style="height:60px;"></div>', unsafe_allow_html=True)  # Spacer
+
+# Fixed position feedback button
+st.markdown("""
+<style>
+div[data-testid="stPopover"] button {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 25px !important;
+    padding: 10px 20px !important;
+    font-weight: 600 !important;
+    box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+}
+</style>
+""", unsafe_allow_html=True)
+
+_, _, _, fb_col = st.columns([4, 1, 1, 1])
+with fb_col:
+    with st.popover("💬 Feedback"):
+        st.markdown("**Send Feedback**")
+        fb_type = st.segmented_control("Type", ["🐛 Bug", "✨ Feature", "💬 General"], 
+                                        default="💬 General", label_visibility="collapsed")
+        fb_msg = st.text_area("Message", height=100, placeholder="What's on your mind?",
+                              label_visibility="collapsed", key="fb_msg")
+        if st.button("Send Feedback", type="primary", use_container_width=True, key="fb_send"):
+            if fb_msg:
+                t = fb_type.split()[1].lower() if fb_type else "general"
+                success = submit_feedback("interview", t, fb_msg)
+                if success:
+                    st.success("Thanks! 🙏")
                 else:
-                    st.warning("Please enter a message")
+                    st.error("Failed to send")
