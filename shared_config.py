@@ -61,7 +61,7 @@ APP_URLS = {
     "portal": os.environ.get("PORTAL_URL", "https://demo.sharphuman.com"),
     "jd": os.environ.get("JD_URL", "https://jd.sharphuman.com"),
     "screen": os.environ.get("SCREEN_URL", "https://screen.sharphuman.com"),
-    "interview": os.environ.get("INTERVIEW_URL", "https://hire.sharphuman.com"),
+    "interview": os.environ.get("INTERVIEW_URL", "https://interview.sharphuman.com"),
     "source": os.environ.get("SOURCE_URL", "https://outreach.sharphuman.com"),
     "content": os.environ.get("CONTENT_URL", "https://content.sharphuman.com"),
     "sales": os.environ.get("SALES_URL", "https://sales.sharphuman.com"),
