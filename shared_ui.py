@@ -382,6 +382,19 @@ def get_global_css():
         border-radius: 12px !important;
     }}
     
+    /* Hide broken Material Icon text on popover button (expand_more, etc.) */
+    [data-testid="stPopover"] > button > div > span:last-child {{
+        font-size: 0 !important;
+        width: 0 !important;
+        overflow: hidden !important;
+    }}
+    
+    /* Also fix any stray icon text in buttons */
+    button span.material-icons,
+    button span[class*="icon"] {{
+        font-size: 0 !important;
+    }}
+    
     /* ========== METRICS ========== */
     [data-testid="stMetricValue"] {{
         font-size: {TYPOGRAPHY["size_2xl"]} !important;
