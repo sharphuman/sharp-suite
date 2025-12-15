@@ -11,13 +11,39 @@ import tempfile
 import zipfile
 from xml.etree import ElementTree
 
-SUPABASE_URL = "https://qkjtprqgblnfftrotyks.supabase.co"
-SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFranRwcnFnYmxuZmZ0cm90eWtzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUzNTgzNDAsImV4cCI6MjA4MDkzNDM0MH0.pVzSq4M5i58zBGl7OPDhNL9qYBcg-bz8MVrBI5MQSkw"
-SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", SUPABASE_ANON_KEY)
-GOD_PASSWORD = os.environ.get("GOD_PASSWORD", "G0DHum@n101!!!")
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-
-APP_URLS = {"portal": "https://demo.sharphuman.com", "jd": "https://jd.sharphuman.com", "screen": "https://screen.sharphuman.com", "interview": "https://hire.sharphuman.com", "source": "https://outreach.sharphuman.com", "content": "https://content.sharphuman.com", "sales": "https://sales.sharphuman.com", "reach": "https://reach.sharphuman.com", "assistant": "https://assistant.sharphuman.com", "admin": "https://admin.sharphuman.com"}
+# ============================================
+# SHARED MODULE IMPORTS
+# ============================================
+try:
+    from shared_config import (
+        SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_KEY,
+        ANTHROPIC_API_KEY, GOD_PASSWORD, APP_URLS, CLAUDE_MODEL
+    )
+    from shared_ui import (
+        apply_global_styles,
+        render_top_banner,
+        render_header,
+        render_sidebar,
+        render_feedback_widget,
+        StatusIndicator,
+        COLORS
+    )
+    USING_SHARED = True
+    print("[INFO] Successfully loaded shared_ui and shared_config")
+except ImportError as e:
+    # Fallback if shared modules not available
+    USING_SHARED = False
+    print(f"[WARN] Could not import shared modules: {e}")
+    print(f"[WARN] Current working directory: {os.getcwd()}")
+    print(f"[WARN] Files in cwd: {os.listdir('.')[:20]}")
+    SUPABASE_URL = "https://qkjtprqgblnfftrotyks.supabase.co"
+    SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFranRwcnFnYmxuZmZ0cm90eWtzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUzNTgzNDAsImV4cCI6MjA4MDkzNDM0MH0.pVzSq4M5i58zBGl7OPDhNL9qYBcg-bz8MVrBI5MQSkw"
+    SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", SUPABASE_ANON_KEY)
+    GOD_PASSWORD = os.environ.get("GOD_PASSWORD", "G0DHum@n101!!!")
+    ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+    CLAUDE_MODEL = "claude-sonnet-4-20250514"
+    APP_URLS = {"portal": "https://demo.sharphuman.com", "jd": "https://jd.sharphuman.com", "screen": "https://screen.sharphuman.com", "interview": "https://hire.sharphuman.com", "source": "https://outreach.sharphuman.com", "content": "https://content.sharphuman.com", "sales": "https://sales.sharphuman.com", "reach": "https://reach.sharphuman.com", "assistant": "https://assistant.sharphuman.com", "admin": "https://admin.sharphuman.com"}
+    COLORS = {"primary": "#6366f1", "secondary": "#8b5cf6", "success": "#10b981", "warning": "#eab308", "error": "#ef4444"}
 
 FOCUS_AREAS = ["Technical Skills", "Problem Solving", "Communication", "Leadership", "Cultural Fit", "Experience Depth", "Motivation", "Collaboration"]
 INTERVIEW_STAGES = ["Phone Screen", "Technical Round", "Hiring Manager", "Final Round", "Culture Fit", "Panel Interview"]
@@ -344,9 +370,10 @@ def call_claude(prompt, max_tokens=8000, action="interview"):
     if not ANTHROPIC_API_KEY:
         return "Error: ANTHROPIC_API_KEY not set", 0
     try:
+        model = CLAUDE_MODEL if USING_SHARED else "claude-sonnet-4-20250514"
         r = requests.post("https://api.anthropic.com/v1/messages",
             headers={"x-api-key": ANTHROPIC_API_KEY, "Content-Type": "application/json", "anthropic-version": "2023-06-01"},
-            json={"model": "claude-sonnet-4-20250514", "max_tokens": max_tokens, "messages": [{"role": "user", "content": prompt}]}, timeout=180)
+            json={"model": model, "max_tokens": max_tokens, "messages": [{"role": "user", "content": prompt}]}, timeout=180)
         if r.status_code == 200:
             text = r.json()["content"][0]["text"]
             if st.session_state.user:
@@ -1198,67 +1225,32 @@ st.set_page_config(page_title="Sharp Interview", page_icon="🎯", layout="wide"
 init_session()
 check_url_auth()
 
-st.markdown("""<style>
-@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap');
-@import url('https://fonts.googleapis.com/icon?family=Material+Icons');
-*, *::before, *::after { font-family: 'Nunito', sans-serif !important; }
-.stApp, [data-testid="stAppViewContainer"] { background: #0a0a0f !important; }
-[data-testid="stHeader"] { background: transparent !important; }
-section[data-testid="stSidebar"] { background: #0d0d14 !important; border-right: 1px solid rgba(99,102,241,0.2); }
-section[data-testid="stSidebar"] > div { background: #0d0d14 !important; }
-section[data-testid="stSidebar"] * { color: #e5e5e5 !important; }
-section[data-testid="stSidebar"] > div > div:first-child > div:first-child { display: none !important; }
-h1,h2,h3,h4,h5,h6 { color: #fff !important; }
-p,span,label,div,li { color: #e5e5e5; }
-.stTextInput > div > div > input, .stTextArea > div > div > textarea, .stSelectbox > div > div, [data-baseweb="select"] > div { background: #12121a !important; border: 1px solid rgba(99,102,241,0.3) !important; color: #fff !important; border-radius: 8px !important; }
-[data-baseweb="tag"] { background: rgba(99,102,241,0.3) !important; color: white !important; }
-.stButton > button { background: linear-gradient(135deg, #6366f1, #8b5cf6) !important; color: white !important; border: none !important; border-radius: 8px !important; font-weight: 600 !important; }
-.stDownloadButton > button { background: #1a1a2e !important; border: 1px solid rgba(99,102,241,0.3) !important; color: white !important; }
-[data-testid="stFileUploader"] { background: #12121a !important; border: 1px dashed rgba(99,102,241,0.3) !important; border-radius: 8px !important; }
-.stTabs [data-baseweb="tab-list"] { background: transparent !important; gap: 8px; border-bottom: 1px solid rgba(99,102,241,0.2); }
-.stTabs [data-baseweb="tab"] { background: transparent !important; color: #9ca3af !important; }
-.stTabs [aria-selected="true"] { color: #fff !important; border-bottom: 2px solid #6366f1 !important; }
-.user-card { background: rgba(99,102,241,0.1); border-radius: 12px; padding: 16px; margin-bottom: 20px; }
-.input-card { background: #12121a; border: 1px solid rgba(99,102,241,0.2); border-radius: 12px; padding: 20px; margin: 12px 0; }
-.status-badge { position: fixed; top: 70px; right: 20px; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; padding: 10px 20px; border-radius: 25px; font-weight: 600; z-index: 999; animation: pulse 2s infinite; }
-@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
-div[data-testid="stPopover"] button { background: linear-gradient(135deg, #6366f1, #8b5cf6) !important; color: white !important; border: none !important; border-radius: 25px !important; }
+# Apply styles - use shared or fallback
+if USING_SHARED:
+    apply_global_styles()
+else:
+    # Fallback inline styles
+    st.markdown("""<style>
+    @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/icon?family=Material+Icons');
+    *, *::before, *::after { font-family: 'Nunito', sans-serif !important; }
+    .stApp, [data-testid="stAppViewContainer"] { background: #0a0a0f !important; }
+    [data-testid="stHeader"] { background: transparent !important; }
+    section[data-testid="stSidebar"] { background: #0d0d14 !important; border-right: 1px solid rgba(99,102,241,0.2); }
+    section[data-testid="stSidebar"] > div { background: #0d0d14 !important; }
+    h1,h2,h3,h4,h5,h6 { color: #fff !important; }
+    p,span,label,div,li { color: #e5e5e5; }
+    .stTextInput > div > div > input, .stTextArea > div > div > textarea { background: #12121a !important; border: 1px solid rgba(99,102,241,0.3) !important; color: #fff !important; border-radius: 8px !important; }
+    .stButton > button { background: linear-gradient(135deg, #6366f1, #8b5cf6) !important; color: white !important; border: none !important; border-radius: 8px !important; }
+    .stDownloadButton > button { background: #1a1a2e !important; border: 1px solid rgba(99,102,241,0.3) !important; color: white !important; }
+    .stTabs [data-baseweb="tab-list"] { background: transparent !important; border-bottom: 1px solid rgba(99,102,241,0.2); }
+    .stTabs [aria-selected="true"] { color: #fff !important; border-bottom: 2px solid #6366f1 !important; }
+    .input-card { background: #12121a; border: 1px solid rgba(99,102,241,0.2); border-radius: 12px; padding: 20px; margin: 12px 0; }
+    .status-badge { position: fixed; top: 70px; right: 20px; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; padding: 10px 20px; border-radius: 25px; font-weight: 600; z-index: 999; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+    </style>""", unsafe_allow_html=True)
 
-/* EXPANDER FIX - Hide broken Material Icon text */
-.streamlit-expanderHeader { 
-    background: #12121a !important; 
-    border-radius: 10px !important;
-    border: 1px solid rgba(99,102,241,0.2) !important;
-    padding: 12px 16px !important;
-}
-.streamlit-expanderHeader:hover {
-    border-color: rgba(99,102,241,0.5) !important;
-}
-/* Hide the broken icon text like keyboard_arrow_down */
-.streamlit-expanderHeader svg { display: inline-block !important; }
-.streamlit-expanderHeader span[data-testid="stMarkdownContainer"] p {
-    display: inline !important;
-}
-/* Force hide any text that looks like icon names */
-details summary span:not([data-testid]) {
-    font-size: 0 !important;
-}
-details summary span:not([data-testid])::before {
-    content: "▶";
-    font-size: 14px;
-    margin-right: 8px;
-}
-details[open] summary span:not([data-testid])::before {
-    content: "▼";
-}
-/* Alternative: use CSS to replace with proper chevrons */
-[data-testid="stExpander"] details summary div[data-testid="stMarkdownContainer"] {
-    display: flex !important;
-    align-items: center !important;
-}
-</style>""", unsafe_allow_html=True)
-
-# Auth
+# Auth screen
 if not st.session_state.authenticated:
     c1, c2, c3 = st.columns([1, 1.2, 1])
     with c2:
@@ -1276,6 +1268,7 @@ if not st.session_state.authenticated:
                     st.session_state.authenticated = True
                     st.session_state.is_god = True
                     st.session_state.user = {"email": "GOD", "id": "god"}
+                    st.session_state.user_plan = "god"
                     st.session_state.session_token = secrets.token_urlsafe(32)
                     st.rerun()
                 elif email and pwd:
@@ -1304,43 +1297,59 @@ if not st.session_state.authenticated:
                         st.error(r["message"])
     st.stop()
 
+# Status badge for working state
 if st.session_state.working_on:
     st.markdown(f'<div class="status-badge">{st.session_state.working_on}</div>', unsafe_allow_html=True)
 
-# Sidebar
-with st.sidebar:
-    st.markdown(f"""<div class="user-card">
-        <p style="color:#9ca3af;margin:0;font-size:12px;">Logged in as</p>
-        <p style="color:#fff;margin:4px 0;font-weight:600;">{get_user_email()}</p>
-        <p style="color:#6366f1;margin:0;font-size:12px;text-transform:uppercase;">{st.session_state.get('user_plan','free')} plan</p>
-    </div>""", unsafe_allow_html=True)
-    
-    st.markdown("**Apps**")
-    apps = [("portal", "🏠 Portal"), ("jd", "📝 JD Writer"), ("screen", "🔍 CV Screener"), ("interview", "🎯 Interview"), ("source", "🎣 Sourcing"), ("content", "✍️ Content"), ("sales", "💰 Sales"), ("reach", "🚀 Reach"), ("assistant", "🤖 Assistant")]
-    for key, label in apps:
-        if key == "interview":
-            st.markdown(f"<div style='background:linear-gradient(135deg,#6366f1,#8b5cf6);padding:10px 16px;border-radius:8px;text-align:center;margin:4px 0;color:white;font-weight:600;'>{label} ◀</div>", unsafe_allow_html=True)
-        else:
-            st.link_button(label, build_app_url(key), use_container_width=True)
-    
-    if st.session_state.get("is_god"):
-        st.markdown("---")
-        st.link_button("⚙️ Admin", build_app_url("admin"), use_container_width=True)
-    
-    st.markdown("---")
-    if st.button("🚪 Logout", use_container_width=True):
-        for k in list(st.session_state.keys()):
-            del st.session_state[k]
-        st.rerun()
+# Top Banner (shared UI)
+if USING_SHARED:
+    render_top_banner(show_cta=True, cta_text="Book a Demo")
 
-# Header
-st.markdown("""<div style="display:flex;align-items:center;gap:16px;padding:20px 0;border-bottom:1px solid rgba(99,102,241,0.2);margin-bottom:30px;">
-    <img src="https://sharphuman.com/logo1-3.png" style="width:50px;">
-    <div>
-        <h1 style="margin:0;font-size:28px;">Sharp Interview</h1>
-        <p style="color:#9ca3af;margin:0;">AI-Powered Interview Evaluation</p>
-    </div>
-</div>""", unsafe_allow_html=True)
+# Sidebar (shared UI or fallback)
+if USING_SHARED:
+    render_sidebar(
+        current_app="interview",
+        user_email=get_user_email(),
+        user_plan=st.session_state.get('user_plan', 'free'),
+        session_token=st.session_state.get('session_token', '')
+    )
+else:
+    with st.sidebar:
+        st.markdown(f"""<div style="background:rgba(99,102,241,0.1);border-radius:12px;padding:16px;margin-bottom:20px;">
+            <p style="color:#9ca3af;margin:0;font-size:12px;">Logged in as</p>
+            <p style="color:#fff;margin:4px 0;font-weight:600;">{get_user_email()}</p>
+            <p style="color:#6366f1;margin:0;font-size:12px;text-transform:uppercase;">{st.session_state.get('user_plan','free')} plan</p>
+        </div>""", unsafe_allow_html=True)
+        
+        st.markdown("**Apps**")
+        apps = [("portal", "🏠 Portal"), ("jd", "📝 JD Writer"), ("screen", "🔍 CV Screener"), ("interview", "🎯 Interview"), ("source", "🎣 Sourcing"), ("content", "✍️ Content"), ("sales", "💰 Sales"), ("reach", "🚀 Reach"), ("assistant", "🤖 Assistant")]
+        for key, label in apps:
+            if key == "interview":
+                st.markdown(f"<div style='background:linear-gradient(135deg,#6366f1,#8b5cf6);padding:10px 16px;border-radius:8px;text-align:center;margin:4px 0;color:white;font-weight:600;'>{label} ◀</div>", unsafe_allow_html=True)
+            else:
+                st.link_button(label, build_app_url(key), use_container_width=True)
+        
+        if st.session_state.get("is_god"):
+            st.markdown("---")
+            st.link_button("⚙️ Admin", build_app_url("admin"), use_container_width=True)
+        
+        st.markdown("---")
+        if st.button("🚪 Logout", use_container_width=True):
+            for k in list(st.session_state.keys()):
+                del st.session_state[k]
+            st.rerun()
+
+# Header (shared UI or fallback)
+if USING_SHARED:
+    render_header("Sharp Interview", "AI-Powered Interview Evaluation", "🎯")
+else:
+    st.markdown("""<div style="display:flex;align-items:center;gap:16px;padding:20px 0;border-bottom:1px solid rgba(99,102,241,0.2);margin-bottom:30px;">
+        <img src="https://sharphuman.com/logo1-3.png" style="width:50px;">
+        <div>
+            <h1 style="margin:0;font-size:28px;">Sharp Interview</h1>
+            <p style="color:#9ca3af;margin:0;">AI-Powered Interview Evaluation</p>
+        </div>
+    </div>""", unsafe_allow_html=True)
 
 # Show evaluated candidates
 if st.session_state.candidates:
@@ -1893,18 +1902,21 @@ with tab_questions:
         else:
             st.error(result)
 
-# Feedback
-st.markdown('<div style="height:60px;"></div>', unsafe_allow_html=True)
-_, _, _, fb = st.columns([4, 1, 1, 1])
-with fb:
-    with st.popover("💬 Feedback"):
-        st.markdown("**Send Feedback**")
-        ft = st.segmented_control("Type", ["🐛 Bug", "✨ Feature", "💬 General"], default="💬 General", label_visibility="collapsed")
-        fm = st.text_area("Message", height=100, placeholder="...", label_visibility="collapsed", key="fb_msg")
-        if st.button("Send", type="primary", use_container_width=True, key="fb_send"):
-            if fm:
-                fb_type = ft.split()[1].lower() if ft else "general"
-                if submit_feedback("interview", fb_type, fm):
-                    st.success("Thanks!")
-                else:
-                    st.error("Failed")
+# Feedback Widget
+if USING_SHARED:
+    render_feedback_widget("interview", submit_feedback)
+else:
+    st.markdown('<div style="height:60px;"></div>', unsafe_allow_html=True)
+    _, _, _, fb = st.columns([4, 1, 1, 1])
+    with fb:
+        with st.popover("💬 Feedback"):
+            st.markdown("**Send Feedback**")
+            ft = st.segmented_control("Type", ["🐛 Bug", "✨ Feature", "💬 General"], default="💬 General", label_visibility="collapsed")
+            fm = st.text_area("Message", height=100, placeholder="...", label_visibility="collapsed", key="fb_msg")
+            if st.button("Send", type="primary", use_container_width=True, key="fb_send"):
+                if fm:
+                    fb_type = ft.split()[1].lower() if ft else "general"
+                    if submit_feedback("interview", fb_type, fm):
+                        st.success("Thanks!")
+                    else:
+                        st.error("Failed")
