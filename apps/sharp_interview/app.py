@@ -152,13 +152,11 @@ def is_readable_text(text):
     """Check if extracted text is actually readable (not garbled)"""
     if not text or len(text.strip()) < 10:
         return False
-    # Count printable ASCII and common unicode characters
-    readable_chars = sum(1 for c in text if c.isprintable() or c in '\n\r\t')
-    ratio = readable_chars / len(text)
-    # Also check for too many special/control characters
-    special_chars = sum(1 for c in text if ord(c) > 127 and not c.isalnum())
-    special_ratio = special_chars / len(text) if len(text) > 0 else 0
-    return ratio > 0.85 and special_ratio < 0.3
+    # Count alphabetic characters - real text should have words
+    alpha_chars = sum(1 for c in text if c.isalpha())
+    alpha_ratio = alpha_chars / len(text) if len(text) > 0 else 0
+    # Real text should have at least 30% letters
+    return alpha_ratio > 0.3
 
 def clean_extracted_text(text):
     """Clean up extracted text by removing problematic characters"""
@@ -186,27 +184,35 @@ def extract_text_from_file(uploaded_file):
     elif file_type == 'pdf':
         extracted_text = ""
         
-        # Try PyMuPDF first
+        # Try PyMuPDF first with multiple extraction methods
         try:
             import fitz
             pdf = fitz.open(stream=content, filetype="pdf")
             text_parts = []
             for page in pdf:
-                page_text = page.get_text()
-                if page_text:
+                # Try standard text extraction
+                page_text = page.get_text("text")
+                if not page_text or not page_text.strip():
+                    # Try with different flags
+                    page_text = page.get_text("text", flags=fitz.TEXT_PRESERVE_WHITESPACE)
+                if not page_text or not page_text.strip():
+                    # Try blocks extraction
+                    blocks = page.get_text("blocks")
+                    page_text = "\n".join([b[4] for b in blocks if b[6] == 0])  # type 0 = text
+                if page_text and page_text.strip():
                     text_parts.append(page_text)
             pdf.close()
             extracted_text = "\n".join(text_parts)
         except Exception as e:
             pass
         
-        # Clean and validate the extracted text
-        if extracted_text:
+        # If we got text, clean and validate it
+        if extracted_text and extracted_text.strip():
             cleaned = clean_extracted_text(extracted_text)
             if is_readable_text(cleaned):
                 return cleaned
         
-        # Fallback: try pdfplumber if available
+        # Fallback: try pdfplumber
         try:
             import pdfplumber
             with pdfplumber.open(io.BytesIO(content)) as pdf:
@@ -216,10 +222,44 @@ def extract_text_from_file(uploaded_file):
                     if page_text:
                         text_parts.append(page_text)
                 extracted_text = "\n".join(text_parts)
-                if extracted_text:
+                if extracted_text and extracted_text.strip():
                     cleaned = clean_extracted_text(extracted_text)
                     if is_readable_text(cleaned):
                         return cleaned
+        except:
+            pass
+        
+        # Fallback 3: Try PyPDF2 if available
+        try:
+            from PyPDF2 import PdfReader
+            reader = PdfReader(io.BytesIO(content))
+            text_parts = []
+            for page in reader.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    text_parts.append(page_text)
+            extracted_text = "\n".join(text_parts)
+            if extracted_text and extracted_text.strip():
+                cleaned = clean_extracted_text(extracted_text)
+                if is_readable_text(cleaned):
+                    return cleaned
+        except:
+            pass
+        
+        # Last resort: if we got ANY text from PyMuPDF, return it with a warning
+        try:
+            import fitz
+            pdf = fitz.open(stream=content, filetype="pdf")
+            text_parts = []
+            for page in pdf:
+                page_text = page.get_text()
+                if page_text:
+                    text_parts.append(page_text)
+            pdf.close()
+            if text_parts:
+                result = clean_extracted_text("\n".join(text_parts))
+                if len(result) > 50:  # If we got something substantial
+                    return result
         except:
             pass
         
@@ -552,6 +592,138 @@ def export_to_docx(data, title="Evaluation"):
         
         buffer = io.BytesIO()
         doc.save(buffer)
+        buffer.seek(0)
+        return buffer.getvalue()
+    except Exception as e:
+        return None
+
+def export_to_pdf(data, title="Interview Evaluation"):
+    """Export evaluation data to PDF using reportlab"""
+    try:
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import inch
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+        from reportlab.lib.colors import HexColor, black, white
+        from reportlab.lib.enums import TA_CENTER, TA_LEFT
+        
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch)
+        
+        styles = getSampleStyleSheet()
+        
+        # Custom styles
+        title_style = ParagraphStyle('CustomTitle', parent=styles['Title'], fontSize=24, textColor=HexColor('#6366f1'), spaceAfter=20)
+        heading_style = ParagraphStyle('CustomHeading', parent=styles['Heading1'], fontSize=16, textColor=HexColor('#374151'), spaceBefore=16, spaceAfter=8)
+        subheading_style = ParagraphStyle('CustomSubheading', parent=styles['Heading2'], fontSize=13, textColor=HexColor('#6366f1'), spaceBefore=12, spaceAfter=6)
+        body_style = ParagraphStyle('CustomBody', parent=styles['Normal'], fontSize=10, textColor=HexColor('#4b5563'), spaceAfter=6)
+        bullet_style = ParagraphStyle('CustomBullet', parent=styles['Normal'], fontSize=10, textColor=HexColor('#4b5563'), leftIndent=20, spaceAfter=4)
+        
+        story = []
+        
+        # Title
+        story.append(Paragraph(title, title_style))
+        story.append(HRFlowable(width="100%", thickness=1, color=HexColor('#e5e7eb')))
+        story.append(Spacer(1, 12))
+        
+        if isinstance(data, dict):
+            # Score and Recommendation
+            score = data.get('overall_score', 0)
+            rec = data.get('recommendation', 'N/A')
+            score_color = '#10b981' if score >= 75 else '#eab308' if score >= 50 else '#ef4444'
+            
+            score_data = [
+                ['Overall Score', 'Recommendation'],
+                [f"{score}/100", rec]
+            ]
+            score_table = Table(score_data, colWidths=[2.5*inch, 4*inch])
+            score_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), HexColor('#f3f4f6')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), HexColor('#374151')),
+                ('FONTSIZE', (0, 0), (-1, 0), 10),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('TEXTCOLOR', (0, 1), (0, 1), HexColor(score_color)),
+                ('FONTSIZE', (0, 1), (-1, 1), 14),
+                ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('GRID', (0, 0), (-1, -1), 0.5, HexColor('#e5e7eb')),
+                ('TOPPADDING', (0, 0), (-1, -1), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+            ]))
+            story.append(score_table)
+            story.append(Spacer(1, 12))
+            
+            # Summary
+            summary = data.get('overall_summary', '')
+            if summary:
+                story.append(Paragraph(summary, body_style))
+                story.append(Spacer(1, 12))
+            
+            # Strengths
+            story.append(Paragraph("Strengths", heading_style))
+            for s in data.get('strengths', []):
+                s_clean = ''.join(c if c.isprintable() or c in '\n' else ' ' for c in str(s))
+                story.append(Paragraph(f"• {s_clean}", bullet_style))
+            
+            # Concerns
+            story.append(Paragraph("Concerns", heading_style))
+            for c in data.get('concerns', []):
+                c_clean = ''.join(c if c.isprintable() or c in '\n' else ' ' for c in str(c))
+                story.append(Paragraph(f"• {c_clean}", bullet_style))
+            
+            # Focus Areas
+            story.append(Paragraph("Focus Area Scores", heading_style))
+            for fa in data.get('focus_areas', []):
+                area_name = ''.join(c if c.isprintable() else '' for c in str(fa.get('area', 'Unknown')))
+                area_score = fa.get('score', 0)
+                story.append(Paragraph(f"{area_name} — {area_score}/10", subheading_style))
+                assessment = ''.join(c if c.isprintable() or c in '\n' else ' ' for c in str(fa.get('assessment', '')))
+                story.append(Paragraph(assessment, body_style))
+            
+            # CV Verification
+            cv_ver = data.get('cv_verification', {})
+            if cv_ver:
+                story.append(Paragraph("CV Verification", heading_style))
+                trust = cv_ver.get('trust_score', 0)
+                story.append(Paragraph(f"Trust Score: {trust}/10", subheading_style))
+                
+                verified = cv_ver.get('verified_claims', [])
+                if verified:
+                    story.append(Paragraph("Verified Claims:", body_style))
+                    for v in verified:
+                        v_clean = ''.join(c if c.isprintable() else ' ' for c in str(v))
+                        story.append(Paragraph(f"• {v_clean}", bullet_style))
+                
+                unverified = cv_ver.get('unverified_claims', [])
+                if unverified:
+                    story.append(Paragraph("Unverified Claims:", body_style))
+                    for u in unverified:
+                        u_clean = ''.join(c if c.isprintable() else ' ' for c in str(u))
+                        story.append(Paragraph(f"• {u_clean}", bullet_style))
+            
+            # Risk Assessment
+            risk = data.get('risk_assessment', {})
+            if risk:
+                story.append(Paragraph("Risk Assessment", heading_style))
+                hire_risk = risk.get('hiring_risk', '')
+                no_hire_risk = risk.get('not_hiring_risk', '')
+                if hire_risk:
+                    hire_risk_clean = ''.join(c if c.isprintable() or c in '\n' else ' ' for c in str(hire_risk))
+                    story.append(Paragraph(f"<b>Hiring Risk:</b> {hire_risk_clean}", body_style))
+                if no_hire_risk:
+                    no_hire_clean = ''.join(c if c.isprintable() or c in '\n' else ' ' for c in str(no_hire_risk))
+                    story.append(Paragraph(f"<b>Not Hiring Risk:</b> {no_hire_clean}", body_style))
+            
+            # Next Round Questions
+            questions = data.get('questions_for_next_round', [])
+            if questions:
+                story.append(Paragraph("Suggested Questions for Next Round", heading_style))
+                for q in questions:
+                    q_clean = ''.join(c if c.isprintable() else ' ' for c in str(q))
+                    story.append(Paragraph(f"• {q_clean}", bullet_style))
+        
+        doc.build(story)
         buffer.seek(0)
         return buffer.getvalue()
     except Exception as e:
@@ -892,16 +1064,20 @@ with tab_evaluate:
         display_candidate_result(result, result.get('candidate_name', 'Candidate'))
         
         st.markdown("---")
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
             md_content = export_to_markdown(result, result.get('candidate_name', 'Evaluation'))
-            st.download_button("📥 Download MD", md_content, f"{result.get('candidate_name', 'eval')}.md", use_container_width=True)
+            st.download_button("📥 MD", md_content, f"{result.get('candidate_name', 'eval')}.md", use_container_width=True)
         with col2:
             docx_content = export_to_docx(result, result.get('candidate_name', 'Evaluation'))
             if docx_content:
-                st.download_button("📥 Download DOCX", docx_content, f"{result.get('candidate_name', 'eval')}.docx", use_container_width=True)
+                st.download_button("📥 DOCX", docx_content, f"{result.get('candidate_name', 'eval')}.docx", use_container_width=True)
         with col3:
-            st.download_button("📥 Download JSON", json.dumps(result, indent=2), f"{result.get('candidate_name', 'eval')}.json", use_container_width=True)
+            pdf_content = export_to_pdf(result, result.get('candidate_name', 'Evaluation'))
+            if pdf_content:
+                st.download_button("📥 PDF", pdf_content, f"{result.get('candidate_name', 'eval')}.pdf", use_container_width=True)
+        with col4:
+            st.download_button("📥 JSON", json.dumps(result, indent=2), f"{result.get('candidate_name', 'eval')}.json", use_container_width=True)
     
     # INPUT VIEW
     else:
