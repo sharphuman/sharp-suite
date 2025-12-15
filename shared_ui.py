@@ -38,8 +38,9 @@ except ImportError:
 # ===========================================
 EXTERNAL_LINKS = {
     "website": "https://sharphuman.com",
+    "website_label": "Bespoke Services",
     "blog": "https://sharphuman.com/blog",
-    "calendly": "https://calendly.com/sharphuman/demo",
+    "calendly": "https://calendly.com/sharphuman/60min",
     "contact": "https://sharphuman.com/contact",
 }
 
@@ -389,10 +390,34 @@ def get_global_css():
         overflow: hidden !important;
     }}
     
+    /* Aggressive fix: hide any text containing icon names */
+    [data-testid="stPopover"] button span {{
+        font-size: 0 !important;
+        visibility: hidden !important;
+    }}
+    
+    /* But show the label text */
+    [data-testid="stPopover"] button p,
+    [data-testid="stPopover"] button div[data-testid="stMarkdownContainer"] {{
+        font-size: 14px !important;
+        visibility: visible !important;
+    }}
+    
     /* Also fix any stray icon text in buttons */
     button span.material-icons,
     button span[class*="icon"] {{
         font-size: 0 !important;
+    }}
+    
+    /* Hide keyboard_arrow, expand_more, expand_less text anywhere */
+    *:not(script):not(style) {{
+        font-family: 'Nunito', sans-serif !important;
+    }}
+    
+    /* Force Material Icons font where needed but hide text fallback */
+    .material-icons {{
+        font-family: 'Material Icons' !important;
+        font-size: 24px !important;
     }}
     
     /* ========== METRICS ========== */
@@ -410,9 +435,9 @@ def get_global_css():
     
     /* ========== TOP BANNER ========== */
     .top-banner {{
-        background: linear-gradient(135deg, {COLORS["bg_card"]} 0%, rgba(99, 102, 241, 0.1) 100%);
+        background: {COLORS["bg_dark"]};
         border-bottom: 1px solid {COLORS["border"]};
-        padding: 8px 24px;
+        padding: 10px 24px;
         display: flex;
         justify-content: space-between;
         align-items: center;
@@ -424,33 +449,40 @@ def get_global_css():
     .top-banner-links {{
         display: flex;
         align-items: center;
-        gap: 20px;
+        gap: 8px;
     }}
     
     .top-banner-link {{
-        color: {COLORS["text_muted"]};
+        color: {COLORS["text_secondary"]};
         text-decoration: none;
         font-size: 13px;
         font-weight: 500;
-        transition: color 0.2s;
+        padding: 6px 12px;
+        border-radius: 6px;
+        transition: all 0.2s;
         display: flex;
         align-items: center;
         gap: 6px;
+        background: transparent;
+        border: 1px solid transparent;
     }}
     
     .top-banner-link:hover {{
-        color: {COLORS["primary"]};
+        color: {COLORS["text_primary"]};
+        background: rgba(99, 102, 241, 0.1);
+        border-color: {COLORS["border"]};
     }}
     
     .top-banner-cta {{
         background: linear-gradient(135deg, {COLORS["primary"]}, {COLORS["secondary"]});
-        color: white;
-        padding: 6px 16px;
-        border-radius: 20px;
-        font-size: 12px;
+        color: white !important;
+        padding: 8px 20px;
+        border-radius: 8px;
+        font-size: 13px;
         font-weight: 600;
         text-decoration: none;
         transition: transform 0.2s, box-shadow 0.2s;
+        border: none;
     }}
     
     .top-banner-cta:hover {{
@@ -543,7 +575,7 @@ def render_top_banner(show_cta: bool = True, cta_text: str = "Book a Demo", cta_
     <div class="top-banner">
         <div class="top-banner-links">
             <a href="{EXTERNAL_LINKS["website"]}" target="_blank" class="top-banner-link">
-                🌐 Website
+                🌐 {EXTERNAL_LINKS.get("website_label", "Website")}
             </a>
             <a href="{EXTERNAL_LINKS["blog"]}" target="_blank" class="top-banner-link">
                 📖 Blog
