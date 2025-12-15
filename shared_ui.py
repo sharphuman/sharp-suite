@@ -435,7 +435,7 @@ def get_global_css():
     
     /* ========== TOP BANNER ========== */
     .top-banner {{
-        background: {COLORS["bg_dark"]};
+        background: #1a1a2e;
         border-bottom: 1px solid {COLORS["border"]};
         padding: 12px 24px;
         display: flex;
@@ -452,32 +452,34 @@ def get_global_css():
         gap: 12px;
     }}
     
-    /* Pink filled buttons (Demo, Blog style) */
+    /* Pink filled buttons - matching website exactly */
     .top-banner-btn-pink {{
         background: #db2777;
         color: white !important;
-        text-decoration: none;
+        text-decoration: none !important;
         font-size: 14px;
         font-weight: 600;
-        padding: 10px 24px;
+        padding: 12px 28px;
         border-radius: 8px;
         transition: all 0.2s;
         display: inline-block;
+        border: none;
     }}
     
     .top-banner-btn-pink:hover {{
         background: #be185d;
         transform: translateY(-1px);
+        text-decoration: none !important;
     }}
     
-    /* Outline button (Let's Talk style) */
+    /* Outline button - matching website exactly */
     .top-banner-btn-outline {{
         background: transparent;
         color: white !important;
-        text-decoration: none;
+        text-decoration: none !important;
         font-size: 14px;
         font-weight: 600;
-        padding: 10px 24px;
+        padding: 12px 28px;
         border-radius: 8px;
         border: 2px solid #3b82f6;
         transition: all 0.2s;
@@ -485,21 +487,23 @@ def get_global_css():
     }}
     
     .top-banner-btn-outline:hover {{
-        background: rgba(59, 130, 246, 0.1);
+        background: rgba(59, 130, 246, 0.15);
         transform: translateY(-1px);
+        text-decoration: none !important;
     }}
     
     /* Website link on right */
     .top-banner-website {{
-        color: {COLORS["text_muted"]};
-        text-decoration: none;
-        font-size: 13px;
+        color: #60a5fa;
+        text-decoration: none !important;
+        font-size: 14px;
         font-weight: 500;
         transition: color 0.2s;
     }}
     
     .top-banner-website:hover {{
-        color: {COLORS["primary"]};
+        color: #93c5fd;
+        text-decoration: none !important;
     }}
     
     .top-banner-cta {{
@@ -609,15 +613,9 @@ def render_top_banner(show_cta: bool = True, cta_text: str = "Let's Talk", cta_u
                 {cta_text}
             </a>
         </div>
-        <div class="top-banner-links">
-            <a href="{cta_link}" target="_blank" class="top-banner-website">
-                Book A Demo
-            </a>
-            <span style="color: #6b7280;">|</span>
-            <a href="{EXTERNAL_LINKS["website"]}" target="_blank" class="top-banner-website">
-                sharphuman.com
-            </a>
-        </div>
+        <a href="{EXTERNAL_LINKS["website"]}" target="_blank" class="top-banner-website">
+            sharphuman.com
+        </a>
     </div>
     """, unsafe_allow_html=True)
 
