@@ -1,9 +1,10 @@
-"""Sharp JD - Job Description Writer with Shared Auth"""
+"""Sharp JD - Professional Job Description Writer with Cross-App Auth"""
 import streamlit as st
 import os
 import requests
 from datetime import datetime, timedelta
 import secrets
+import json
 
 SUPABASE_URL = "https://qkjtprqgblnfftrotyks.supabase.co"
 SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFranRwcnFnYmxuZmZ0cm90eWtzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUzNTgzNDAsImV4cCI6MjA4MDkzNDM0MH0.pVzSq4M5i58zBGl7OPDhNL9qYBcg-bz8MVrBI5MQSkw"
@@ -29,7 +30,6 @@ APP_URLS = {
 # ============================================
 
 def create_session(user_id, email):
-    """Create a session in Supabase and return the token."""
     token = secrets.token_urlsafe(32)
     try:
         r = requests.post(
@@ -64,7 +64,6 @@ def supabase_sign_in(email, password):
         data = r.json()
         if r.status_code == 200 and data.get("access_token"):
             user = data.get("user", {})
-            # Create session token for cross-app auth
             session_token = create_session(user.get("id"), email)
             return {"success": True, "user": user, "session_token": session_token}
         return {"success": False, "message": data.get("error_description") or "Invalid credentials"}
@@ -93,7 +92,6 @@ def supabase_magic_link(email):
         return {"success": False, "message": str(e)}
 
 def validate_session_token(token):
-    """Validate a session token from URL and return user info."""
     if not token:
         return None
     try:
@@ -106,10 +104,8 @@ def validate_session_token(token):
             sessions = r.json()
             if sessions:
                 session = sessions[0]
-                # Check expiry
                 expires = datetime.fromisoformat(session["expires_at"].replace("Z", "+00:00"))
                 if expires.replace(tzinfo=None) > datetime.utcnow():
-                    # Get user profile
                     user_r = requests.get(
                         f"{SUPABASE_URL}/rest/v1/user_profiles?id=eq.{session['user_id']}",
                         headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {SUPABASE_ANON_KEY}"},
@@ -129,7 +125,6 @@ def validate_session_token(token):
     return None
 
 def log_usage(user_id, session_id, app, action, tokens_used=0):
-    """Log usage to Supabase."""
     try:
         requests.post(
             f"{SUPABASE_URL}/rest/v1/usage_logs",
@@ -152,19 +147,21 @@ def log_usage(user_id, session_id, app, action, tokens_used=0):
         pass
 
 def init_session():
-    if 'authenticated' not in st.session_state:
-        st.session_state.authenticated = False
-    if 'user' not in st.session_state:
-        st.session_state.user = None
-    if 'is_god' not in st.session_state:
-        st.session_state.is_god = False
-    if 'session_token' not in st.session_state:
-        st.session_state.session_token = None
-    if 'user_plan' not in st.session_state:
-        st.session_state.user_plan = "free"
+    defaults = [
+        ('authenticated', False),
+        ('user', None),
+        ('is_god', False),
+        ('session_token', None),
+        ('user_plan', 'free'),
+        ('generated_jd', None),
+        ('jd_metadata', None),
+        ('current_status', None),
+    ]
+    for k, v in defaults:
+        if k not in st.session_state:
+            st.session_state[k] = v
 
 def check_url_auth():
-    """Check for auth token in URL params."""
     token = st.query_params.get("auth")
     if token and not st.session_state.authenticated:
         user_info = validate_session_token(token)
@@ -183,7 +180,6 @@ def get_user_email():
     return "GOD" if st.session_state.is_god else "User"
 
 def build_app_url(app_name):
-    """Build URL with auth token for cross-app navigation."""
     base_url = APP_URLS.get(app_name, "")
     token = st.session_state.get("session_token", "")
     if base_url and token:
@@ -191,12 +187,128 @@ def build_app_url(app_name):
     return base_url
 
 # ============================================
+# HISTORY FUNCTIONS
+# ============================================
+
+def save_jd_to_history(metadata, generated_jd, seo_score, tokens_used):
+    user_id = st.session_state.user.get("id") if st.session_state.user else None
+    if not user_id or user_id == "god":
+        return None
+    
+    try:
+        r = requests.post(
+            f"{SUPABASE_URL}/rest/v1/jd_history",
+            headers={
+                "apikey": SUPABASE_ANON_KEY,
+                "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "return=representation"
+            },
+            json={
+                "user_id": user_id,
+                "job_title": metadata.get("job_title"),
+                "company": metadata.get("company"),
+                "user_type": metadata.get("user_type"),
+                "experience_level": metadata.get("experience_level"),
+                "remote_type": metadata.get("remote_type"),
+                "industry": metadata.get("industry"),
+                "platform": metadata.get("platform"),
+                "output_format": metadata.get("output_format"),
+                "tone": metadata.get("tone"),
+                "word_count": metadata.get("word_count"),
+                "include_salary": metadata.get("include_salary"),
+                "include_benefits": metadata.get("include_benefits"),
+                "include_diversity": metadata.get("include_diversity"),
+                "seo_optimized": metadata.get("seo_optimized"),
+                "requirements": metadata.get("requirements"),
+                "generated_jd": generated_jd,
+                "seo_ats_score": seo_score,
+                "tokens_used": tokens_used
+            },
+            timeout=10
+        )
+        if r.status_code in [200, 201]:
+            return r.json()[0] if r.json() else None
+    except:
+        pass
+    return None
+
+def get_jd_history(limit=20):
+    user_id = st.session_state.user.get("id") if st.session_state.user else None
+    if not user_id or user_id == "god":
+        return []
+    
+    try:
+        r = requests.get(
+            f"{SUPABASE_URL}/rest/v1/jd_history?user_id=eq.{user_id}&order=created_at.desc&limit={limit}",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {SUPABASE_ANON_KEY}"},
+            timeout=10
+        )
+        if r.status_code == 200:
+            return r.json()
+    except:
+        pass
+    return []
+
+def toggle_favorite(jd_id, is_favorite):
+    try:
+        requests.patch(
+            f"{SUPABASE_URL}/rest/v1/jd_history?id=eq.{jd_id}",
+            headers={
+                "apikey": SUPABASE_ANON_KEY,
+                "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
+                "Content-Type": "application/json"
+            },
+            json={"is_favorite": is_favorite},
+            timeout=5
+        )
+    except:
+        pass
+
+def delete_jd_history(jd_id):
+    try:
+        requests.delete(
+            f"{SUPABASE_URL}/rest/v1/jd_history?id=eq.{jd_id}",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {SUPABASE_ANON_KEY}"},
+            timeout=5
+        )
+    except:
+        pass
+
+def submit_feedback(app, feedback_type, rating, message):
+    user_id = st.session_state.user.get("id") if st.session_state.user else None
+    email = get_user_email()
+    
+    try:
+        requests.post(
+            f"{SUPABASE_URL}/rest/v1/user_feedback",
+            headers={
+                "apikey": SUPABASE_ANON_KEY,
+                "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal"
+            },
+            json={
+                "user_id": user_id,
+                "app": app,
+                "feedback_type": feedback_type,
+                "rating": rating,
+                "message": message,
+                "email": email
+            },
+            timeout=5
+        )
+        return True
+    except:
+        return False
+
+# ============================================
 # CLAUDE API
 # ============================================
 
-def call_claude(prompt, max_tokens=2000):
+def call_claude(prompt, max_tokens=3000):
     if not ANTHROPIC_API_KEY:
-        return "Error: ANTHROPIC_API_KEY not set"
+        return "Error: ANTHROPIC_API_KEY not set", 0
     try:
         r = requests.post("https://api.anthropic.com/v1/messages", 
                           headers={"x-api-key": ANTHROPIC_API_KEY, "Content-Type": "application/json", "anthropic-version": "2023-06-01"}, 
@@ -204,9 +316,8 @@ def call_claude(prompt, max_tokens=2000):
                           timeout=120)
         if r.status_code == 200:
             text = r.json()["content"][0]["text"]
-            # Log usage
+            tokens_used = (len(prompt) + len(text)) // 4
             if st.session_state.user:
-                tokens_used = (len(prompt) + len(text)) // 4
                 log_usage(
                     st.session_state.user.get("id"),
                     st.session_state.get("session_token"),
@@ -214,13 +325,49 @@ def call_claude(prompt, max_tokens=2000):
                     "generate_jd",
                     tokens_used
                 )
-            return text
-        return f"Error: {r.status_code}"
+            return text, tokens_used
+        return f"Error: {r.status_code}", 0
     except Exception as e:
-        return f"Error: {str(e)}"
+        return f"Error: {str(e)}", 0
+
+def calculate_seo_ats_score(jd_text, metadata):
+    score = 50
+    jd_lower = jd_text.lower()
+    
+    if metadata.get("job_title", "").lower() in jd_lower:
+        score += 10
+    
+    section_keywords = ["responsibilities", "requirements", "qualifications", "benefits", "about"]
+    sections_found = sum(1 for kw in section_keywords if kw in jd_lower)
+    score += min(sections_found * 2, 10)
+    
+    word_count = len(jd_text.split())
+    if 300 <= word_count <= 800:
+        score += 10
+    elif 200 <= word_count <= 1000:
+        score += 5
+    
+    action_verbs = ["manage", "lead", "develop", "create", "design", "build", "implement", "drive", "collaborate"]
+    if any(verb in jd_lower for verb in action_verbs):
+        score += 5
+    
+    buzzwords = ["synergy", "leverage", "paradigm", "holistic", "bandwidth"]
+    if sum(1 for bw in buzzwords if bw in jd_lower) > 2:
+        score -= 5
+    
+    if metadata.get("include_salary"):
+        score += 5
+    
+    if metadata.get("seo_optimized"):
+        score += 5
+    
+    if metadata.get("include_diversity") or "equal opportunity" in jd_lower or "diversity" in jd_lower:
+        score += 5
+    
+    return min(max(score, 1), 100)
 
 # ============================================
-# UI
+# UI COMPONENTS
 # ============================================
 
 def render_auth():
@@ -246,7 +393,7 @@ def render_auth():
                     if r["success"]:
                         st.session_state.authenticated = True
                         st.session_state.user = r["user"]
-                        st.session_state.session_token = r.get("session_token")  # ← FIXED: Store token
+                        st.session_state.session_token = r.get("session_token")
                         st.rerun()
                     else:
                         st.error(r["message"])
@@ -276,12 +423,7 @@ def render_auth():
                         st.error(r["message"])
 
 def render_sidebar():
-    """Render sidebar with navigation."""
     with st.sidebar:
-        # DEBUG - show token
-        st.caption(f"🔑 Token: {st.session_state.get('session_token', 'NONE')[:20] if st.session_state.get('session_token') else 'NONE'}...")
-        
-        # User info
         st.markdown(f"""
         <div style='padding:12px;background:rgba(99,102,241,0.1);border-radius:8px;margin-bottom:16px;'>
             <p style='color:#9ca3af;margin:0;font-size:0.75rem;'>Logged in as</p>
@@ -317,10 +459,41 @@ def render_sidebar():
         
         st.markdown("---")
         if st.button("🚪 Logout", use_container_width=True):
-            st.session_state.authenticated = False
-            st.session_state.user = None
-            st.session_state.session_token = None
-            st.session_state.is_god = False
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
+            st.rerun()
+
+def render_feedback_modal():
+    with st.expander("💬 Send Feedback", expanded=False):
+        feedback_type = st.selectbox("Type", ["General", "Bug Report", "Feature Request", "Complaint", "Praise"], key="fb_type")
+        rating = st.slider("Rating", 1, 5, 4, key="fb_rating")
+        message = st.text_area("Your feedback", placeholder="Tell us what you think...", key="fb_msg")
+        if st.button("Submit Feedback", key="fb_submit"):
+            if message:
+                if submit_feedback("jd", feedback_type.lower().replace(" ", "_"), rating, message):
+                    st.success("Thanks for your feedback! 🙏")
+                else:
+                    st.error("Failed to submit. Please try again.")
+            else:
+                st.warning("Please enter a message")
+
+def render_history_sidebar():
+    st.markdown("---")
+    st.markdown("#### 📜 Recent JDs")
+    
+    history = get_jd_history(10)
+    
+    if not history:
+        st.caption("No saved JDs yet")
+        return
+    
+    for item in history:
+        title = item.get("job_title", "Untitled")[:25]
+        date = item.get("created_at", "")[:10]
+        is_fav = "⭐" if item.get("is_favorite") else ""
+        if st.button(f"{is_fav} {title}", key=f"hist_{item['id']}", use_container_width=True, help=date):
+            st.session_state.generated_jd = item.get("generated_jd")
+            st.session_state.jd_metadata = item
             st.rerun()
 
 # ============================================
@@ -329,59 +502,360 @@ def render_sidebar():
 
 st.set_page_config(page_title="Sharp JD", page_icon="📝", layout="wide")
 init_session()
-
-# Check for URL auth token first
 check_url_auth()
 
 if not st.session_state.authenticated:
     render_auth()
     st.stop()
 
-# Main app styles
-st.markdown("""<style>@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap');*{font-family:'Nunito',sans-serif!important;}.stApp{background:linear-gradient(135deg,#0a0a0f,#0f0f1a);}h1,h2,h3{color:white!important;}.stTextInput>div>div>input,.stTextArea>div>div>textarea,.stSelectbox>div>div>div{background:#12121a!important;border:1px solid rgba(99,102,241,0.3)!important;color:white!important;}.stButton>button{background:linear-gradient(135deg,#6366f1,#8b5cf6)!important;color:white!important;border:none!important;}.output-box{background:#12121a;border:1px solid rgba(99,102,241,0.2);border-radius:12px;padding:24px;margin:16px 0;}p,span,label{color:#e5e5e5!important;}</style>""", unsafe_allow_html=True)
+# Main styles
+st.markdown("""<style>
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap');
+* { font-family: 'Nunito', sans-serif !important; }
+.stApp { background: linear-gradient(135deg, #0a0a0f 0%, #0f0f1a 100%); }
+h1,h2,h3 { color: white !important; }
+.stTextInput > div > div > input, .stTextArea > div > div > textarea, .stSelectbox > div > div > div {
+    background: #12121a !important; border: 1px solid rgba(99,102,241,0.3) !important; color: white !important;
+}
+.stButton > button { background: linear-gradient(135deg, #6366f1, #8b5cf6) !important; color: white !important; border: none !important; }
+.output-box { background: #12121a; border: 1px solid rgba(99,102,241,0.2); border-radius: 12px; padding: 24px; margin: 16px 0; }
+p, span, label { color: #e5e5e5 !important; }
+.status-badge { background: rgba(99,102,241,0.2); border: 1px solid rgba(99,102,241,0.4); border-radius: 8px; padding: 8px 16px; display: inline-block; }
+</style>""", unsafe_allow_html=True)
 
-# Sidebar navigation
+# Sidebar
 render_sidebar()
+with st.sidebar:
+    render_history_sidebar()
+    st.markdown("---")
+    render_feedback_modal()
 
-# Header
-st.markdown("""<div style="display:flex;align-items:center;gap:12px;padding:20px 0;border-bottom:1px solid rgba(99,102,241,0.2);margin-bottom:24px;"><img src="https://sharphuman.com/logo1-3.png" style="width:45px;"><div><h1 style="margin:0;">Sharp JD</h1><p style="color:#9ca3af;margin:0;">AI-Powered Job Descriptions</p></div></div>""", unsafe_allow_html=True)
+# Header with status
+header_col1, header_col2 = st.columns([3, 1])
+with header_col1:
+    st.markdown("""<div style="display:flex;align-items:center;gap:12px;padding:20px 0;border-bottom:1px solid rgba(99,102,241,0.2);margin-bottom:24px;">
+        <img src="https://sharphuman.com/logo1-3.png" style="width:45px;">
+        <div><h1 style="margin:0;">Sharp JD</h1><p style="color:#9ca3af;margin:0;">AI-Powered Job Descriptions</p></div>
+    </div>""", unsafe_allow_html=True)
+with header_col2:
+    if st.session_state.current_status:
+        st.markdown(f"""<div style="text-align:right;padding-top:20px;">
+            <div class="status-badge">✨ {st.session_state.current_status}</div>
+        </div>""", unsafe_allow_html=True)
 
-# Main content
-col1, col2 = st.columns([2, 1])
+# Main tabs
+tab_create, tab_history = st.tabs(["✏️ Create JD", "📜 History"])
 
-with col1:
-    title = st.text_input("Job Title", placeholder="e.g. Senior Software Engineer")
-    company = st.text_input("Company", placeholder="e.g. Acme Corp")
-    details = st.text_area("Key Requirements & Details", height=150, placeholder="• 5+ years Python experience\n• Remote friendly\n• Competitive salary...")
+with tab_create:
+    # Row 1: Basic Info
+    st.markdown("### 📋 Basic Information")
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        job_title = st.text_input("Job Title *", placeholder="e.g. Senior Software Engineer")
+        company = st.text_input("Company Name", placeholder="e.g. Acme Corp")
+    
+    with col2:
+        user_type = st.selectbox("I am a:", ["Recruiter (Agency)", "Internal HR / TA"])
+        experience_level = st.selectbox("Experience Level", ["Entry Level", "Mid Level", "Senior", "Lead", "Manager", "Director", "Executive"])
+    
+    with col3:
+        industry = st.selectbox("Industry", [
+            "Technology", "Healthcare", "Finance", "Retail", "Manufacturing", 
+            "Education", "Media", "Consulting", "Government", "Non-Profit", "Other"
+        ])
+        remote_type = st.selectbox("Work Type", ["Remote", "Hybrid", "On-site"])
 
-with col2:
-    tone = st.selectbox("Tone", ["Professional", "Casual", "Startup Vibe", "Corporate"])
-    length = st.selectbox("Length", ["Standard", "Detailed", "Brief"])
-    include_salary = st.checkbox("Include salary placeholder")
-    include_benefits = st.checkbox("Include benefits section", value=True)
+    # Row 2: Requirements
+    st.markdown("### 📝 Requirements & Details")
+    requirements = st.text_area(
+        "Key Requirements & Responsibilities", 
+        height=120,
+        placeholder="• 5+ years Python experience\n• Team leadership skills\n• Cloud platform expertise (AWS/GCP)\n• Strong communication skills..."
+    )
 
-if st.button("📝 Generate Job Description", type="primary", use_container_width=True):
-    if title:
-        prompt = f"""Write a {tone.lower()} job description for a {title} position at {company or 'a growing company'}.
+    # Row 3: Output Settings
+    st.markdown("### ⚙️ Output Settings")
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        platform = st.selectbox("Target Platform", [
+            "LinkedIn", "Indeed", "Company Careers Page", "Glassdoor", 
+            "ZipRecruiter", "Monster", "General/Multi-platform"
+        ])
+    
+    with col2:
+        output_format = st.selectbox("Output Format", [
+            "Plain Text", "ATS-Ready HTML", "Markdown"
+        ])
+    
+    with col3:
+        tone = st.selectbox("Tone", ["Professional", "Casual/Startup", "Formal/Corporate", "Friendly", "Bold/Exciting"])
+    
+    with col4:
+        word_count = st.slider("Target Word Count", 200, 1200, 500, step=50)
 
-Requirements and details:
-{details or 'Standard requirements for this role'}
+    # Row 4: Options
+    st.markdown("### 🎯 Include Sections")
+    opt_col1, opt_col2, opt_col3, opt_col4 = st.columns(4)
+    
+    with opt_col1:
+        include_salary = st.checkbox("💰 Salary Range", value=False)
+    with opt_col2:
+        include_benefits = st.checkbox("🎁 Benefits Section", value=True)
+    with opt_col3:
+        include_diversity = st.checkbox("🌈 Diversity Statement", value=True)
+    with opt_col4:
+        seo_optimized = st.checkbox("🔍 SEO Optimized", value=True)
 
-Length: {length}
-{"Include a salary range placeholder section." if include_salary else ""}
-{"Include a comprehensive benefits section." if include_benefits else ""}
+    # Generate Button
+    st.markdown("---")
+    
+    if st.button("📝 Generate Job Description", type="primary", use_container_width=True):
+        if not job_title:
+            st.warning("Please enter a job title")
+        else:
+            st.session_state.current_status = "Crafting your JD..."
+            
+            user_context = "an external recruiter at a staffing agency" if "Recruiter" in user_type else "an internal HR/TA professional"
+            
+            format_instructions = {
+                "Plain Text": "Use plain text formatting with clear section headers.",
+                "ATS-Ready HTML": "Format as clean HTML that's optimized for ATS parsing. Use semantic tags like <h2>, <h3>, <ul>, <li>.",
+                "Markdown": "Format using Markdown with headers (##), bullet points, and bold text."
+            }
+            
+            platform_tips = {
+                "LinkedIn": "Optimize for LinkedIn's job posting format. Keep it scannable with short paragraphs. Use industry keywords for search visibility.",
+                "Indeed": "Front-load important information. Indeed users scan quickly. Include salary if possible for better visibility.",
+                "Company Careers Page": "Can be more detailed and branded. Include company culture and values.",
+                "Glassdoor": "Be transparent and detailed. Glassdoor users research thoroughly.",
+                "General/Multi-platform": "Create a versatile JD that works across multiple platforms."
+            }
+            
+            prompt = f"""You are an expert job description writer. Write a compelling job description with the following specifications:
 
-Format with clear sections: About Us, The Role, Responsibilities, Requirements, Nice to Have, {"Salary Range, " if include_salary else ""}{"Benefits, " if include_benefits else ""}How to Apply."""
+**Context:** I am {user_context} writing this JD.
 
-        with st.spinner("✨ Generating..."):
-            result = call_claude(prompt)
-            st.markdown(f'<div class="output-box">{result}</div>', unsafe_allow_html=True)
+**Job Details:**
+- Title: {job_title}
+- Company: {company or "A growing company"}
+- Experience Level: {experience_level}
+- Industry: {industry}
+- Work Type: {remote_type}
+
+**Requirements provided:**
+{requirements or "Standard requirements for this role level"}
+
+**Output Specifications:**
+- Target Platform: {platform}
+- {platform_tips.get(platform, "")}
+- Format: {output_format}
+- {format_instructions.get(output_format, "")}
+- Tone: {tone}
+- Target Length: Approximately {word_count} words
+
+**Sections to Include:**
+- About the Company (brief, compelling)
+- About the Role
+- Key Responsibilities (5-7 bullet points)
+- Requirements (Must-have and Nice-to-have separated)
+{"- Salary Range: Include a placeholder like '$X - $Y based on experience'" if include_salary else ""}
+{"- Benefits & Perks section" if include_benefits else ""}
+{"- Equal Opportunity / Diversity statement" if include_diversity else ""}
+- How to Apply
+
+{"**SEO Optimization:** Include relevant industry keywords naturally throughout. Optimize for job board search algorithms." if seo_optimized else ""}
+
+Write the job description now. Make it compelling, clear, and professional."""
+
+            with st.spinner("✨ Crafting your job description... Analyzing role requirements and industry standards."):
+                result, tokens = call_claude(prompt, max_tokens=3000)
+                
+                if not result.startswith("Error"):
+                    metadata = {
+                        "job_title": job_title,
+                        "company": company,
+                        "user_type": user_type,
+                        "experience_level": experience_level,
+                        "remote_type": remote_type,
+                        "industry": industry,
+                        "platform": platform,
+                        "output_format": output_format,
+                        "tone": tone,
+                        "word_count": word_count,
+                        "include_salary": include_salary,
+                        "include_benefits": include_benefits,
+                        "include_diversity": include_diversity,
+                        "seo_optimized": seo_optimized,
+                        "requirements": requirements
+                    }
+                    
+                    st.session_state.generated_jd = result
+                    st.session_state.jd_metadata = metadata
+                    st.session_state.current_status = None
+                    st.rerun()
+                else:
+                    st.error(result)
+                    st.session_state.current_status = None
+
+    # Display Generated JD
+    if st.session_state.generated_jd:
+        st.markdown("---")
+        st.markdown("### 📄 Generated Job Description")
+        
+        seo_score = calculate_seo_ats_score(st.session_state.generated_jd, st.session_state.jd_metadata or {})
+        word_count_actual = len(st.session_state.generated_jd.split())
+        char_count = len(st.session_state.generated_jd)
+        
+        stat_col1, stat_col2, stat_col3, stat_col4 = st.columns(4)
+        with stat_col1:
+            score_color = "#10b981" if seo_score >= 70 else "#f59e0b" if seo_score >= 50 else "#ef4444"
+            st.markdown(f"""<div style="text-align:center;">
+                <p style="color:#9ca3af;margin:0;font-size:0.75rem;">SEO/ATS Score</p>
+                <p style="color:{score_color};font-size:1.5rem;font-weight:bold;margin:0;">{seo_score}/100</p>
+            </div>""", unsafe_allow_html=True)
+        with stat_col2:
+            st.markdown(f"""<div style="text-align:center;">
+                <p style="color:#9ca3af;margin:0;font-size:0.75rem;">Word Count</p>
+                <p style="color:white;font-size:1.5rem;font-weight:bold;margin:0;">{word_count_actual}</p>
+            </div>""", unsafe_allow_html=True)
+        with stat_col3:
+            st.markdown(f"""<div style="text-align:center;">
+                <p style="color:#9ca3af;margin:0;font-size:0.75rem;">Characters</p>
+                <p style="color:white;font-size:1.5rem;font-weight:bold;margin:0;">{char_count:,}</p>
+            </div>""", unsafe_allow_html=True)
+        with stat_col4:
+            st.markdown(f"""<div style="text-align:center;">
+                <p style="color:#9ca3af;margin:0;font-size:0.75rem;">Format</p>
+                <p style="color:white;font-size:1rem;font-weight:bold;margin:0;">{st.session_state.jd_metadata.get('output_format', 'Plain Text') if st.session_state.jd_metadata else 'Plain Text'}</p>
+            </div>""", unsafe_allow_html=True)
+        
+        st.markdown("")
+        st.markdown(f'<div class="output-box">{st.session_state.generated_jd}</div>', unsafe_allow_html=True)
+        
+        btn_col1, btn_col2, btn_col3, btn_col4 = st.columns(4)
+        
+        with btn_col1:
+            fmt = st.session_state.jd_metadata.get('output_format', 'Plain Text') if st.session_state.jd_metadata else 'Plain Text'
+            ext = ".html" if "HTML" in fmt else ".md" if "Markdown" in fmt else ".txt"
+            mime = "text/html" if "HTML" in fmt else "text/markdown" if "Markdown" in fmt else "text/plain"
             
             st.download_button(
-                "📋 Download as Text",
-                result,
-                file_name=f"job_description_{title.lower().replace(' ', '_')}.txt",
-                mime="text/plain"
+                "📥 Download",
+                st.session_state.generated_jd,
+                file_name=f"job_description_{job_title.lower().replace(' ', '_') if job_title else 'jd'}{ext}",
+                mime=mime,
+                use_container_width=True
             )
+        
+        with btn_col2:
+            if st.button("📋 Copy to Clipboard", use_container_width=True):
+                st.code(st.session_state.generated_jd, language=None)
+                st.info("👆 Select all and copy (Ctrl+A, Ctrl+C)")
+        
+        with btn_col3:
+            if st.button("💾 Save to History", use_container_width=True):
+                if st.session_state.user.get("id") != "god":
+                    saved = save_jd_to_history(
+                        st.session_state.jd_metadata or {},
+                        st.session_state.generated_jd,
+                        seo_score,
+                        0
+                    )
+                    if saved:
+                        st.success("Saved to history! ✓")
+                    else:
+                        st.error("Failed to save")
+                else:
+                    st.warning("History not available in GOD mode")
+        
+        with btn_col4:
+            if st.button("🔄 Start New", use_container_width=True):
+                st.session_state.generated_jd = None
+                st.session_state.jd_metadata = None
+                st.rerun()
+        
+        st.markdown("---")
+        st.markdown("### ✏️ Refine This JD")
+        
+        refine_prompt = st.text_input(
+            "What would you like to change?",
+            placeholder="e.g. Make it shorter, add more technical requirements, change tone to more casual..."
+        )
+        
+        if st.button("✨ Apply Changes", use_container_width=True):
+            if refine_prompt:
+                st.session_state.current_status = "Refining..."
+                
+                refine_full_prompt = f"""Here is a job description:
+
+{st.session_state.generated_jd}
+
+Please modify it according to this request: {refine_prompt}
+
+Keep the same general structure and format, but apply the requested changes. Output only the modified job description."""
+
+                with st.spinner("✨ Applying your changes..."):
+                    refined, _ = call_claude(refine_full_prompt)
+                    if not refined.startswith("Error"):
+                        st.session_state.generated_jd = refined
+                        st.session_state.current_status = None
+                        st.rerun()
+                    else:
+                        st.error(refined)
+            else:
+                st.warning("Please describe what you'd like to change")
+
+with tab_history:
+    st.markdown("### 📜 Your JD History")
+    
+    if st.session_state.user.get("id") == "god":
+        st.info("History is not available in GOD mode. Log in with a regular account to save and view history.")
     else:
-        st.warning("Please enter a job title")
+        history = get_jd_history(50)
+        
+        if not history:
+            st.markdown("""<div style="text-align:center;padding:60px;color:#6b7280;">
+                <p style="font-size:1.2rem;">📝 No saved JDs yet</p>
+                <p>Generate your first job description and save it to see it here!</p>
+            </div>""", unsafe_allow_html=True)
+        else:
+            filter_col1, filter_col2 = st.columns([2, 1])
+            with filter_col1:
+                search = st.text_input("🔍 Search", placeholder="Search by job title...")
+            with filter_col2:
+                show_favorites = st.checkbox("⭐ Favorites only")
+            
+            filtered = history
+            if search:
+                filtered = [h for h in filtered if search.lower() in (h.get("job_title") or "").lower()]
+            if show_favorites:
+                filtered = [h for h in filtered if h.get("is_favorite")]
+            
+            for item in filtered:
+                with st.expander(f"{'⭐ ' if item.get('is_favorite') else ''}{item.get('job_title', 'Untitled')} - {item.get('company', 'No company')} ({item.get('created_at', '')[:10]})"):
+                    st.markdown(f"""
+                    **Platform:** {item.get('platform', 'N/A')} | **Format:** {item.get('output_format', 'N/A')} | **Score:** {item.get('seo_ats_score', 'N/A')}/100
+                    """)
+                    
+                    st.markdown(f'<div class="output-box">{item.get("generated_jd", "")[:500]}...</div>', unsafe_allow_html=True)
+                    
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        if st.button("📋 Load", key=f"load_{item['id']}", use_container_width=True):
+                            st.session_state.generated_jd = item.get("generated_jd")
+                            st.session_state.jd_metadata = item
+                            st.rerun()
+                    with col2:
+                        is_fav = item.get("is_favorite", False)
+                        if st.button("⭐ Unfavorite" if is_fav else "☆ Favorite", key=f"fav_{item['id']}", use_container_width=True):
+                            toggle_favorite(item['id'], not is_fav)
+                            st.rerun()
+                    with col3:
+                        if st.button("📤 To Screener", key=f"screen_{item['id']}", use_container_width=True):
+                            st.info(f"Use this JD in CV Screener: ID {item['id'][:8]}...")
+                    with col4:
+                        if st.button("🗑️ Delete", key=f"del_{item['id']}", use_container_width=True):
+                            delete_jd_history(item['id'])
+                            st.rerun()
