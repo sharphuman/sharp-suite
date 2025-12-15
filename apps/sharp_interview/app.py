@@ -563,6 +563,7 @@ def export_to_markdown(data, title="Evaluation"):
     return str(data)
 
 def export_to_docx(data, title="Evaluation"):
+    """Export evaluation data to DOCX"""
     try:
         from docx import Document
         from docx.shared import Inches, Pt
@@ -575,26 +576,69 @@ def export_to_docx(data, title="Evaluation"):
             p = doc.add_paragraph()
             p.add_run(f"Overall Score: {data.get('overall_score', 'N/A')}/100").bold = True
             doc.add_paragraph(f"Recommendation: {data.get('recommendation', 'N/A')}")
-            doc.add_paragraph(data.get('overall_summary', ''))
+            
+            summary = data.get('overall_summary', '')
+            if summary:
+                # Clean summary text
+                summary = ''.join(c if c.isprintable() or c in '\n\r\t' else ' ' for c in str(summary))
+                doc.add_paragraph(summary)
             
             doc.add_heading("Strengths", level=1)
             for s in data.get('strengths', []):
-                doc.add_paragraph(s, style='List Bullet')
+                s_clean = ''.join(c if c.isprintable() else ' ' for c in str(s))
+                doc.add_paragraph(s_clean, style='List Bullet')
             
             doc.add_heading("Concerns", level=1)
             for c in data.get('concerns', []):
-                doc.add_paragraph(c, style='List Bullet')
+                c_clean = ''.join(c if c.isprintable() else ' ' for c in str(c))
+                doc.add_paragraph(c_clean, style='List Bullet')
             
             doc.add_heading("Focus Areas", level=1)
             for fa in data.get('focus_areas', []):
-                doc.add_heading(f"{fa.get('area')} - {fa.get('score', 0)}/10", level=2)
-                doc.add_paragraph(fa.get('assessment', ''))
+                area_name = ''.join(c if c.isprintable() else '' for c in str(fa.get('area', 'Unknown')))
+                area_score = fa.get('score', 0)
+                doc.add_heading(f"{area_name} - {area_score}/10", level=2)
+                assessment = ''.join(c if c.isprintable() or c in '\n\r\t' else ' ' for c in str(fa.get('assessment', '')))
+                doc.add_paragraph(assessment)
+            
+            # CV Verification
+            cv_ver = data.get('cv_verification', {})
+            if cv_ver:
+                doc.add_heading("CV Verification", level=1)
+                doc.add_paragraph(f"Trust Score: {cv_ver.get('trust_score', 0)}/10")
+                
+                if cv_ver.get('verified_claims'):
+                    doc.add_paragraph("Verified Claims:")
+                    for v in cv_ver.get('verified_claims', []):
+                        v_clean = ''.join(c if c.isprintable() else ' ' for c in str(v))
+                        doc.add_paragraph(v_clean, style='List Bullet')
+            
+            # Risk Assessment
+            risk = data.get('risk_assessment', {})
+            if risk:
+                doc.add_heading("Risk Assessment", level=1)
+                if risk.get('hiring_risk'):
+                    doc.add_paragraph(f"Hiring Risk: {risk.get('hiring_risk')}")
+                if risk.get('not_hiring_risk'):
+                    doc.add_paragraph(f"Not Hiring Risk: {risk.get('not_hiring_risk')}")
+            
+            # Next Round Questions
+            questions = data.get('questions_for_next_round', [])
+            if questions:
+                doc.add_heading("Suggested Questions for Next Round", level=1)
+                for q in questions:
+                    q_clean = ''.join(c if c.isprintable() else ' ' for c in str(q))
+                    doc.add_paragraph(q_clean, style='List Bullet')
         
         buffer = io.BytesIO()
         doc.save(buffer)
         buffer.seek(0)
         return buffer.getvalue()
+    except ImportError:
+        st.warning("📦 python-docx not installed. DOCX export unavailable.")
+        return None
     except Exception as e:
+        st.error(f"DOCX export error: {e}")
         return None
 
 def export_to_pdf(data, title="Interview Evaluation"):
@@ -726,7 +770,11 @@ def export_to_pdf(data, title="Interview Evaluation"):
         doc.build(story)
         buffer.seek(0)
         return buffer.getvalue()
+    except ImportError:
+        st.warning("📦 reportlab not installed. PDF export unavailable.")
+        return None
     except Exception as e:
+        st.error(f"PDF export error: {e}")
         return None
 
 # ============================================
@@ -784,15 +832,31 @@ def display_candidate_result(result_data, candidate_name):
         
         area_color = "#10b981" if area_score >= 8 else "#eab308" if area_score >= 6 else "#f97316" if area_score >= 4 else "#ef4444"
         
-        with st.expander(f"{area_name} — {area_score}/10"):
-            assessment = str(area.get('assessment', 'No assessment available'))
-            assessment = ''.join(c if c.isprintable() or c in '\n' else ' ' for c in assessment)
-            st.markdown(f"**Assessment:** {assessment}")
-            if area.get('evidence'):
-                st.markdown("**Evidence:**")
-                for ev in area.get('evidence', []):
-                    ev_clean = ''.join(c if c.isprintable() or c in '\n' else ' ' for c in str(ev))
-                    st.markdown(f"<div style='background:#1a1a2e;border-left:3px solid #6366f1;padding:10px 14px;margin:6px 0;border-radius:0 8px 8px 0;font-style:italic;color:#a5b4fc;'>\"{ev_clean}\"</div>", unsafe_allow_html=True)
+        # Use custom accordion instead of st.expander to avoid Material Icon bug
+        accordion_id = f"focus_area_{idx}"
+        assessment = str(area.get('assessment', 'No assessment available'))
+        assessment = ''.join(c if c.isprintable() or c in '\n' else ' ' for c in assessment)
+        
+        evidence_html = ""
+        if area.get('evidence'):
+            evidence_html = "<p style='color:#9ca3af;margin:12px 0 8px;font-weight:600;'>Evidence:</p>"
+            for ev in area.get('evidence', []):
+                ev_clean = ''.join(c if c.isprintable() or c in '\n' else ' ' for c in str(ev))
+                evidence_html += f"<div style='background:#1a1a2e;border-left:3px solid #6366f1;padding:10px 14px;margin:6px 0;border-radius:0 8px 8px 0;font-style:italic;color:#a5b4fc;'>\"{ev_clean}\"</div>"
+        
+        st.markdown(f"""
+        <details style="background:#12121a;border:1px solid rgba(99,102,241,0.2);border-radius:10px;margin:8px 0;">
+            <summary style="padding:14px 18px;cursor:pointer;display:flex;align-items:center;gap:12px;list-style:none;">
+                <span style="color:{area_color};font-size:20px;">{'●' if area_score >= 6 else '○'}</span>
+                <span style="color:#fff;font-weight:600;flex:1;">{area_name}</span>
+                <span style="background:{area_color};color:#000;padding:4px 12px;border-radius:12px;font-weight:700;font-size:14px;">{area_score}/10</span>
+            </summary>
+            <div style="padding:0 18px 18px;border-top:1px solid rgba(99,102,241,0.1);">
+                <p style="color:#e5e5e5;margin:12px 0;"><strong>Assessment:</strong> {assessment}</p>
+                {evidence_html}
+            </div>
+        </details>
+        """, unsafe_allow_html=True)
     
     st.markdown("---")
     
@@ -869,6 +933,7 @@ check_url_auth()
 
 st.markdown("""<style>
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/icon?family=Material+Icons');
 *, *::before, *::after { font-family: 'Nunito', sans-serif !important; }
 .stApp, [data-testid="stAppViewContainer"] { background: #0a0a0f !important; }
 [data-testid="stHeader"] { background: transparent !important; }
@@ -891,6 +956,39 @@ p,span,label,div,li { color: #e5e5e5; }
 .status-badge { position: fixed; top: 70px; right: 20px; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; padding: 10px 20px; border-radius: 25px; font-weight: 600; z-index: 999; animation: pulse 2s infinite; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
 div[data-testid="stPopover"] button { background: linear-gradient(135deg, #6366f1, #8b5cf6) !important; color: white !important; border: none !important; border-radius: 25px !important; }
+
+/* EXPANDER FIX - Hide broken Material Icon text */
+.streamlit-expanderHeader { 
+    background: #12121a !important; 
+    border-radius: 10px !important;
+    border: 1px solid rgba(99,102,241,0.2) !important;
+    padding: 12px 16px !important;
+}
+.streamlit-expanderHeader:hover {
+    border-color: rgba(99,102,241,0.5) !important;
+}
+/* Hide the broken icon text like keyboard_arrow_down */
+.streamlit-expanderHeader svg { display: inline-block !important; }
+.streamlit-expanderHeader span[data-testid="stMarkdownContainer"] p {
+    display: inline !important;
+}
+/* Force hide any text that looks like icon names */
+details summary span:not([data-testid]) {
+    font-size: 0 !important;
+}
+details summary span:not([data-testid])::before {
+    content: "▶";
+    font-size: 14px;
+    margin-right: 8px;
+}
+details[open] summary span:not([data-testid])::before {
+    content: "▼";
+}
+/* Alternative: use CSS to replace with proper chevrons */
+[data-testid="stExpander"] details summary div[data-testid="stMarkdownContainer"] {
+    display: flex !important;
+    align-items: center !important;
+}
 </style>""", unsafe_allow_html=True)
 
 # Auth
@@ -1071,11 +1169,15 @@ with tab_evaluate:
         with col2:
             docx_content = export_to_docx(result, result.get('candidate_name', 'Evaluation'))
             if docx_content:
-                st.download_button("📥 DOCX", docx_content, f"{result.get('candidate_name', 'eval')}.docx", use_container_width=True)
+                st.download_button("📥 DOCX", docx_content, f"{result.get('candidate_name', 'eval')}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
+            else:
+                st.button("📥 DOCX", disabled=True, use_container_width=True, help="DOCX export failed - check dependencies")
         with col3:
             pdf_content = export_to_pdf(result, result.get('candidate_name', 'Evaluation'))
             if pdf_content:
-                st.download_button("📥 PDF", pdf_content, f"{result.get('candidate_name', 'eval')}.pdf", use_container_width=True)
+                st.download_button("📥 PDF", pdf_content, f"{result.get('candidate_name', 'eval')}.pdf", mime="application/pdf", use_container_width=True)
+            else:
+                st.button("📥 PDF", disabled=True, use_container_width=True, help="PDF export failed - check dependencies")
         with col4:
             st.download_button("📥 JSON", json.dumps(result, indent=2), f"{result.get('candidate_name', 'eval')}.json", use_container_width=True)
     
@@ -1149,8 +1251,14 @@ with tab_evaluate:
                         transcript = extract_text_from_file(trans_file)
                     if transcript and not transcript.startswith("["):
                         st.success(f"Loaded ({len(transcript):,} chars)")
-                        with st.expander("Preview"):
-                            st.text(transcript[:1500] + ("..." if len(transcript) > 1500 else ""))
+                        # Custom preview instead of st.expander
+                        preview_text = transcript[:1500] + ("..." if len(transcript) > 1500 else "")
+                        st.markdown(f"""
+                        <details style="background:#12121a;border:1px solid rgba(99,102,241,0.2);border-radius:8px;margin:8px 0;">
+                            <summary style="padding:10px 14px;cursor:pointer;color:#9ca3af;font-size:14px;">▶ Preview transcript</summary>
+                            <pre style="padding:12px;margin:0;color:#e5e5e5;font-size:12px;white-space:pre-wrap;max-height:300px;overflow:auto;">{preview_text}</pre>
+                        </details>
+                        """, unsafe_allow_html=True)
                     else:
                         st.warning(transcript)
             else:
@@ -1292,16 +1400,34 @@ with tab_questions:
                 # Questions
                 st.markdown("#### Questions")
                 for i, q in enumerate(data.get('questions', []), 1):
-                    with st.expander(f"**Q{i}: {q.get('category', '')}** ({q.get('time_estimate', '')} min)"):
-                        st.markdown(f"**Question:** {q.get('question', '')}")
-                        
-                        if q.get('follow_ups'):
-                            st.markdown("**Follow-ups:**")
-                            for f in q.get('follow_ups', []):
-                                st.markdown(f"- {f}")
-                        
-                        st.markdown(f"**Look for:** {q.get('what_to_look_for', '')}")
-                        st.markdown(f"**Red flags:** {q.get('red_flags', '')}")
+                    category = q.get('category', '')
+                    time_est = q.get('time_estimate', '')
+                    question = q.get('question', '')
+                    look_for = q.get('what_to_look_for', '')
+                    red_flags = q.get('red_flags', '')
+                    
+                    follow_ups_html = ""
+                    if q.get('follow_ups'):
+                        follow_ups_html = "<p style='color:#9ca3af;margin:10px 0 6px;font-weight:600;'>Follow-ups:</p><ul style='margin:0;padding-left:20px;'>"
+                        for f in q.get('follow_ups', []):
+                            follow_ups_html += f"<li style='color:#e5e5e5;margin:4px 0;'>{f}</li>"
+                        follow_ups_html += "</ul>"
+                    
+                    st.markdown(f"""
+                    <details style="background:#12121a;border:1px solid rgba(99,102,241,0.2);border-radius:10px;margin:8px 0;">
+                        <summary style="padding:14px 18px;cursor:pointer;display:flex;align-items:center;gap:8px;">
+                            <span style="background:#6366f1;color:white;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;">Q{i}</span>
+                            <span style="color:#fff;font-weight:600;flex:1;">{category}</span>
+                            <span style="color:#9ca3af;font-size:13px;">⏱ {time_est} min</span>
+                        </summary>
+                        <div style="padding:0 18px 18px;border-top:1px solid rgba(99,102,241,0.1);">
+                            <p style="color:#e5e5e5;margin:12px 0;"><strong style="color:#a5b4fc;">Question:</strong> {question}</p>
+                            {follow_ups_html}
+                            <p style="color:#e5e5e5;margin:10px 0;"><strong style="color:#10b981;">Look for:</strong> {look_for}</p>
+                            <p style="color:#e5e5e5;margin:10px 0;"><strong style="color:#ef4444;">Red flags:</strong> {red_flags}</p>
+                        </div>
+                    </details>
+                    """, unsafe_allow_html=True)
                 
                 # Closing
                 closing = data.get('closing', {})
