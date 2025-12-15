@@ -1,19 +1,14 @@
-"""Sharp JD - Job Description Writer with Shared Auth T """
+"""Sharp JD - Job Description Writer with Shared Auth"""
 import streamlit as st
 import os
-
-# Import shared auth module (in production, this would be a package)
-# For now, we inline the essential functions
+import requests
+from datetime import datetime, timedelta
+import secrets
 
 SUPABASE_URL = "https://qkjtprqgblnfftrotyks.supabase.co"
 SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFranRwcnFnYmxuZmZ0cm90eWtzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUzNTgzNDAsImV4cCI6MjA4MDkzNDM0MH0.pVzSq4M5i58zBGl7OPDhNL9qYBcg-bz8MVrBI5MQSkw"
 GOD_PASSWORD = "G0DHum@n101!!!"
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-
-import requests
-import hashlib
-from datetime import datetime, timedelta
-import json
 
 # App URLs for navigation
 APP_URLS = {
@@ -33,6 +28,34 @@ APP_URLS = {
 # AUTH FUNCTIONS
 # ============================================
 
+def create_session(user_id, email):
+    """Create a session in Supabase and return the token."""
+    token = secrets.token_urlsafe(32)
+    try:
+        r = requests.post(
+            f"{SUPABASE_URL}/rest/v1/sessions",
+            headers={
+                "apikey": SUPABASE_ANON_KEY,
+                "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal"
+            },
+            json={
+                "user_id": user_id,
+                "token": token,
+                "ip_address": "unknown",
+                "device_hash": "jd",
+                "is_active": True,
+                "expires_at": (datetime.utcnow() + timedelta(hours=24)).isoformat()
+            },
+            timeout=10
+        )
+        if r.status_code in [200, 201]:
+            return token
+    except:
+        pass
+    return token
+
 def supabase_sign_in(email, password):
     try:
         r = requests.post(f"{SUPABASE_URL}/auth/v1/token?grant_type=password", 
@@ -40,7 +63,10 @@ def supabase_sign_in(email, password):
                           json={"email": email, "password": password}, timeout=10)
         data = r.json()
         if r.status_code == 200 and data.get("access_token"):
-            return {"success": True, "user": data.get("user"), "access_token": data.get("access_token")}
+            user = data.get("user", {})
+            # Create session token for cross-app auth
+            session_token = create_session(user.get("id"), email)
+            return {"success": True, "user": user, "session_token": session_token}
         return {"success": False, "message": data.get("error_description") or "Invalid credentials"}
     except Exception as e:
         return {"success": False, "message": str(e)}
@@ -204,20 +230,23 @@ def render_auth():
         st.markdown("""<div style="text-align:center;padding:40px 0;"><img src="https://sharphuman.com/logo1-3.png" style="width:70px;margin-bottom:16px;"><h1 style="color:white;">Sharp JD</h1><p style="color:#9ca3af;">Job Description Writer</p></div>""", unsafe_allow_html=True)
         tab1, tab2 = st.tabs(["🔐 Log In", "✨ Sign Up"])
         with tab1:
-            e, p = st.text_input("Email", key="le"), st.text_input("Password", type="password", key="lp")
+            e = st.text_input("Email", key="le")
+            p = st.text_input("Password", type="password", key="lp")
             if st.button("Log In", use_container_width=True):
                 if p == GOD_PASSWORD:
+                    token = secrets.token_urlsafe(32)
                     st.session_state.authenticated = True
                     st.session_state.is_god = True
                     st.session_state.user = {"email": "GOD", "id": "god"}
                     st.session_state.user_plan = "god"
-                    st.session_state.session_token = "god_mode"
+                    st.session_state.session_token = token
                     st.rerun()
                 elif e and p:
                     r = supabase_sign_in(e, p)
                     if r["success"]:
                         st.session_state.authenticated = True
                         st.session_state.user = r["user"]
+                        st.session_state.session_token = r.get("session_token")  # ← FIXED: Store token
                         st.rerun()
                     else:
                         st.error(r["message"])
@@ -231,7 +260,9 @@ def render_auth():
                     else:
                         st.error(r["message"])
         with tab2:
-            se, sp, sc = st.text_input("Email", key="se"), st.text_input("Password", type="password", key="sp"), st.text_input("Confirm", type="password", key="sc")
+            se = st.text_input("Email", key="se")
+            sp = st.text_input("Password", type="password", key="sp")
+            sc = st.text_input("Confirm", type="password", key="sc")
             if st.button("Create Account", use_container_width=True):
                 if sp != sc:
                     st.error("Passwords don't match")
@@ -247,6 +278,9 @@ def render_auth():
 def render_sidebar():
     """Render sidebar with navigation."""
     with st.sidebar:
+        # DEBUG - show token
+        st.caption(f"🔑 Token: {st.session_state.get('session_token', 'NONE')[:20] if st.session_state.get('session_token') else 'NONE'}...")
+        
         # User info
         st.markdown(f"""
         <div style='padding:12px;background:rgba(99,102,241,0.1);border-radius:8px;margin-bottom:16px;'>
@@ -343,7 +377,6 @@ Format with clear sections: About Us, The Role, Responsibilities, Requirements, 
             result = call_claude(prompt)
             st.markdown(f'<div class="output-box">{result}</div>', unsafe_allow_html=True)
             
-            # Copy button
             st.download_button(
                 "📋 Download as Text",
                 result,
