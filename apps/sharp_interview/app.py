@@ -148,6 +148,29 @@ def build_app_url(app_name):
 # FILE EXTRACTION (ROBUST)
 # ============================================
 
+def is_readable_text(text):
+    """Check if extracted text is actually readable (not garbled)"""
+    if not text or len(text.strip()) < 10:
+        return False
+    # Count printable ASCII and common unicode characters
+    readable_chars = sum(1 for c in text if c.isprintable() or c in '\n\r\t')
+    ratio = readable_chars / len(text)
+    # Also check for too many special/control characters
+    special_chars = sum(1 for c in text if ord(c) > 127 and not c.isalnum())
+    special_ratio = special_chars / len(text) if len(text) > 0 else 0
+    return ratio > 0.85 and special_ratio < 0.3
+
+def clean_extracted_text(text):
+    """Clean up extracted text by removing problematic characters"""
+    if not text:
+        return ""
+    # Remove null bytes and other control characters (except newlines/tabs)
+    cleaned = ''.join(c if c.isprintable() or c in '\n\r\t' else ' ' for c in text)
+    # Normalize whitespace
+    cleaned = re.sub(r'[ \t]+', ' ', cleaned)
+    cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
+    return cleaned.strip()
+
 def extract_text_from_file(uploaded_file):
     if uploaded_file is None:
         return ""
@@ -157,33 +180,53 @@ def extract_text_from_file(uploaded_file):
     uploaded_file.seek(0)
     
     if file_type == 'txt':
-        return content.decode('utf-8', errors='ignore')
+        text = content.decode('utf-8', errors='ignore')
+        return clean_extracted_text(text)
     
     elif file_type == 'pdf':
+        extracted_text = ""
+        
+        # Try PyMuPDF first
         try:
             import fitz
             pdf = fitz.open(stream=content, filetype="pdf")
             text_parts = []
             for page in pdf:
-                text_parts.append(page.get_text())
+                page_text = page.get_text()
+                if page_text:
+                    text_parts.append(page_text)
             pdf.close()
-            result = "\n".join(text_parts)
-            if result.strip():
-                return result
+            extracted_text = "\n".join(text_parts)
         except Exception as e:
             pass
         
+        # Clean and validate the extracted text
+        if extracted_text:
+            cleaned = clean_extracted_text(extracted_text)
+            if is_readable_text(cleaned):
+                return cleaned
+        
+        # Fallback: try pdfplumber if available
         try:
-            text = content.decode('latin-1', errors='ignore')
-            matches = re.findall(r'\(([^)]+)\)', text)
-            if matches:
-                return ' '.join(matches)
+            import pdfplumber
+            with pdfplumber.open(io.BytesIO(content)) as pdf:
+                text_parts = []
+                for page in pdf.pages:
+                    page_text = page.extract_text()
+                    if page_text:
+                        text_parts.append(page_text)
+                extracted_text = "\n".join(text_parts)
+                if extracted_text:
+                    cleaned = clean_extracted_text(extracted_text)
+                    if is_readable_text(cleaned):
+                        return cleaned
         except:
             pass
         
-        return "[PDF extraction failed - please paste the content directly]"
+        return "[PDF extraction failed - the PDF may be scanned/image-based. Please paste the content directly.]"
     
     elif file_type in ['docx', 'doc']:
+        # Try python-docx
         try:
             from docx import Document
             doc = Document(io.BytesIO(content))
@@ -197,10 +240,14 @@ def extract_text_from_file(uploaded_file):
                         if cell.text.strip():
                             paragraphs.append(cell.text.strip())
             if paragraphs:
-                return '\n\n'.join(paragraphs)
-        except:
+                text = '\n\n'.join(paragraphs)
+                cleaned = clean_extracted_text(text)
+                if is_readable_text(cleaned):
+                    return cleaned
+        except Exception as e:
             pass
         
+        # Fallback: raw XML from ZIP
         try:
             with zipfile.ZipFile(io.BytesIO(content)) as z:
                 if 'word/document.xml' in z.namelist():
@@ -211,7 +258,10 @@ def extract_text_from_file(uploaded_file):
                         if elem.text and elem.text.strip():
                             texts.append(elem.text.strip())
                     if texts:
-                        return ' '.join(texts)
+                        text = ' '.join(texts)
+                        cleaned = clean_extracted_text(text)
+                        if is_readable_text(cleaned):
+                            return cleaned
         except:
             pass
         
@@ -547,15 +597,30 @@ def display_candidate_result(result_data, candidate_name):
     st.markdown("### Focus Area Scores")
     
     for area in result_data.get('focus_areas', []):
+        area_name = str(area.get('area', 'Unknown Area'))
+        # Sanitize area name - remove any non-printable characters
+        area_name = ''.join(c if c.isprintable() else '' for c in area_name)
+        if not area_name:
+            area_name = "Focus Area"
+        
         area_score = area.get('score', 0)
+        if not isinstance(area_score, (int, float)):
+            try:
+                area_score = int(area_score)
+            except:
+                area_score = 0
+        
         area_color = "#10b981" if area_score >= 8 else "#eab308" if area_score >= 6 else "#f97316" if area_score >= 4 else "#ef4444"
         
-        with st.expander(f"**{area.get('area')}** - {area_score}/10"):
-            st.markdown(f"**Assessment:** {area.get('assessment', '')}")
+        with st.expander(f"{area_name} — {area_score}/10"):
+            assessment = str(area.get('assessment', 'No assessment available'))
+            assessment = ''.join(c if c.isprintable() or c in '\n' else ' ' for c in assessment)
+            st.markdown(f"**Assessment:** {assessment}")
             if area.get('evidence'):
                 st.markdown("**Evidence:**")
                 for ev in area.get('evidence', []):
-                    st.markdown(f"<div style='background:#1a1a2e;border-left:3px solid #6366f1;padding:10px 14px;margin:6px 0;border-radius:0 8px 8px 0;font-style:italic;color:#a5b4fc;'>\"{ev}\"</div>", unsafe_allow_html=True)
+                    ev_clean = ''.join(c if c.isprintable() or c in '\n' else ' ' for c in str(ev))
+                    st.markdown(f"<div style='background:#1a1a2e;border-left:3px solid #6366f1;padding:10px 14px;margin:6px 0;border-radius:0 8px 8px 0;font-style:italic;color:#a5b4fc;'>\"{ev_clean}\"</div>", unsafe_allow_html=True)
     
     st.markdown("---")
     
