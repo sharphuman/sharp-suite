@@ -339,27 +339,39 @@ def render_dashboard():
     st.markdown("""<style>
     @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap');
     * { font-family: 'Nunito', sans-serif !important; }
-    .stApp { background: linear-gradient(135deg, #0a0a0f, #0f0f1a); }
+    
+    .stApp { 
+        background: #1a1a1a;
+        background-image: url('https://sharphuman.com/sharphuman_blue.png');
+        background-attachment: fixed;
+        background-size: cover;
+        background-position: center;
+    }
+    
     h1, h2, h3, h4 { color: white !important; }
     p, span, label { color: #e5e5e5 !important; }
     
     .app-tile {
-        background: linear-gradient(135deg, #12121a, #1a1a2e);
+        background: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(10px);
         border: 1px solid rgba(99,102,241,0.3);
         border-radius: 16px;
-        padding: 24px;
-        text-align: center;
+        padding: 20px 24px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
         transition: all 0.3s ease;
-        height: 100%;
+        margin-bottom: 8px;
     }
     .app-tile:hover {
         border-color: rgba(99,102,241,0.8);
-        transform: translateY(-2px);
+        transform: translateX(4px);
         box-shadow: 0 10px 30px rgba(99,102,241,0.2);
     }
-    .app-icon { font-size: 2.5rem; margin-bottom: 12px; }
-    .app-title { font-size: 1.2rem; font-weight: 700; color: white; margin-bottom: 8px; }
-    .app-desc { font-size: 0.85rem; color: #9ca3af; }
+    .app-icon { font-size: 2rem; }
+    .app-info { flex: 1; }
+    .app-title { font-size: 1.1rem; font-weight: 700; color: white; margin: 0; }
+    .app-desc { font-size: 0.85rem; color: #9ca3af; margin: 0; }
     
     .stLinkButton > a {
         background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;
@@ -379,20 +391,21 @@ def render_dashboard():
     </div>
     """, unsafe_allow_html=True)
     
-    # App tiles - 4 columns
-    cols = st.columns(4)
-    
-    for i, (app_key, icon, title, desc) in enumerate(APPS):
-        with cols[i % 4]:
+    # App tiles - LINEAR layout (one per row)
+    for app_key, icon, title, desc in APPS:
+        col1, col2 = st.columns([5, 1])
+        with col1:
             st.markdown(f"""
             <div class="app-tile">
                 <div class="app-icon">{icon}</div>
-                <div class="app-title">{title}</div>
-                <div class="app-desc">{desc}</div>
+                <div class="app-info">
+                    <div class="app-title">{title}</div>
+                    <div class="app-desc">{desc}</div>
+                </div>
             </div>
             """, unsafe_allow_html=True)
-            st.link_button(f"Open {title}", build_app_url(app_key), use_container_width=True)
-            st.markdown("<br>", unsafe_allow_html=True)
+        with col2:
+            st.link_button("Open →", build_app_url(app_key), use_container_width=True)
 
 # ============================================
 # MAIN
