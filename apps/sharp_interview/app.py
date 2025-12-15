@@ -352,7 +352,20 @@ def call_claude(prompt, max_tokens=8000, action="interview"):
             if st.session_state.user:
                 log_usage(st.session_state.user.get("id"), st.session_state.get("session_token"), "interview", action, (len(prompt)+len(text))//4)
             return text, (len(prompt)+len(text))//4
-        return f"Error: {r.status_code}", 0
+        elif r.status_code == 500:
+            return "Error: 500 - Claude API server error. Please try again in a moment.", 0
+        elif r.status_code == 529:
+            return "Error: 529 - Claude API overloaded. Please wait a moment and try again.", 0
+        elif r.status_code == 429:
+            return "Error: 429 - Rate limited. Please wait a moment and try again.", 0
+        else:
+            try:
+                err_detail = r.json().get("error", {}).get("message", r.text[:200])
+            except:
+                err_detail = r.text[:200]
+            return f"Error: {r.status_code} - {err_detail}", 0
+    except requests.exceptions.Timeout:
+        return "Error: Request timed out. The transcript may be too long - try shortening it.", 0
     except Exception as e:
         return f"Error: {e}", 0
 
@@ -539,6 +552,12 @@ Return JSON:
 # EXPORT FUNCTIONS
 # ============================================
 
+def clean_text(text):
+    """Clean text for export - removes unprintable characters."""
+    if not text:
+        return ""
+    return ''.join(c if c.isprintable() or c in '\n\r\t' else ' ' for c in str(text))
+
 def export_to_markdown(data, title="Evaluation"):
     if isinstance(data, dict):
         md = f"# {title}\n\n"
@@ -561,6 +580,254 @@ def export_to_markdown(data, title="Evaluation"):
         
         return md
     return str(data)
+
+def export_comparison_to_markdown(comp_data, candidates):
+    """Export comparison to Markdown format."""
+    md = "# Candidate Comparison Report\n\n"
+    md += f"**Date:** {datetime.now().strftime('%Y-%m-%d')}\n"
+    md += f"**Candidates Compared:** {len(candidates)}\n\n"
+    
+    # Executive Summary
+    md += "## Executive Summary\n\n"
+    md += f"{comp_data.get('executive_summary', 'No summary available.')}\n\n"
+    
+    # Comparison Table
+    table = comp_data.get('comparison_table', {})
+    if table.get('headers') and table.get('rows'):
+        md += "## Comparison Matrix\n\n"
+        headers = table['headers']
+        md += "| " + " | ".join(headers) + " |\n"
+        md += "| " + " | ".join(["---"] * len(headers)) + " |\n"
+        for row in table['rows']:
+            md += "| " + " | ".join(str(cell) for cell in row) + " |\n"
+        md += "\n"
+    
+    # Head to Head
+    if comp_data.get('head_to_head'):
+        md += "## Head-to-Head Analysis\n\n"
+        for item in comp_data['head_to_head']:
+            md += f"### {item.get('area', 'Unknown')}\n"
+            md += f"**Winner:** {item.get('winner', 'N/A')}\n\n"
+            md += f"{item.get('analysis', '')}\n\n"
+    
+    # Final Ranking
+    md += "## Final Ranking\n\n"
+    for r in comp_data.get('final_ranking', []):
+        md += f"### #{r.get('rank', '?')} - {r.get('candidate', 'Unknown')}\n"
+        md += f"{r.get('reasoning', '')}\n\n"
+    
+    # Hiring Recommendation
+    hr = comp_data.get('hiring_recommendation', {})
+    md += "## Hiring Recommendation\n\n"
+    md += f"**Primary Choice:** {hr.get('primary_choice', 'N/A')}\n\n"
+    md += f"{hr.get('primary_reasoning', '')}\n\n"
+    
+    if hr.get('backup_choice') and hr.get('backup_choice') != 'None':
+        md += f"**Backup Choice:** {hr.get('backup_choice', 'N/A')}\n\n"
+        md += f"{hr.get('backup_reasoning', '')}\n\n"
+    
+    if hr.get('proceed_to_next_round'):
+        md += f"**Proceed to Next Round:** {', '.join(hr.get('proceed_to_next_round', []))}\n\n"
+    
+    if hr.get('do_not_proceed'):
+        md += f"**Do Not Proceed:** {', '.join(hr.get('do_not_proceed', []))}\n\n"
+    
+    return md
+
+def export_comparison_to_docx(comp_data, candidates):
+    """Export comparison to DOCX format."""
+    try:
+        from docx import Document
+        from docx.shared import Inches, Pt, RGBColor
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.enum.table import WD_TABLE_ALIGNMENT
+        
+        doc = Document()
+        
+        # Title
+        title = doc.add_heading('Candidate Comparison Report', 0)
+        
+        # Metadata
+        doc.add_paragraph(f"Date: {datetime.now().strftime('%Y-%m-%d')}")
+        doc.add_paragraph(f"Candidates Compared: {len(candidates)}")
+        doc.add_paragraph()
+        
+        # Executive Summary
+        doc.add_heading('Executive Summary', level=1)
+        summary = clean_text(comp_data.get('executive_summary', 'No summary available.'))
+        p = doc.add_paragraph(summary)
+        
+        # Comparison Table
+        table_data = comp_data.get('comparison_table', {})
+        if table_data.get('headers') and table_data.get('rows'):
+            doc.add_heading('Comparison Matrix', level=1)
+            headers = table_data['headers']
+            rows = table_data['rows']
+            
+            table = doc.add_table(rows=len(rows) + 1, cols=len(headers))
+            table.style = 'Table Grid'
+            
+            # Header row
+            for i, header in enumerate(headers):
+                cell = table.rows[0].cells[i]
+                cell.text = str(header)
+                cell.paragraphs[0].runs[0].bold = True
+            
+            # Data rows
+            for row_idx, row in enumerate(rows):
+                for col_idx, cell_val in enumerate(row):
+                    table.rows[row_idx + 1].cells[col_idx].text = str(cell_val)
+            
+            doc.add_paragraph()
+        
+        # Head to Head
+        if comp_data.get('head_to_head'):
+            doc.add_heading('Head-to-Head Analysis', level=1)
+            for item in comp_data['head_to_head']:
+                doc.add_heading(clean_text(item.get('area', 'Unknown')), level=2)
+                doc.add_paragraph(f"Winner: {clean_text(item.get('winner', 'N/A'))}")
+                doc.add_paragraph(clean_text(item.get('analysis', '')))
+        
+        # Final Ranking
+        doc.add_heading('Final Ranking', level=1)
+        for r in comp_data.get('final_ranking', []):
+            rank = r.get('rank', '?')
+            candidate = clean_text(r.get('candidate', 'Unknown'))
+            reasoning = clean_text(r.get('reasoning', ''))
+            
+            h = doc.add_heading(f"#{rank} - {candidate}", level=2)
+            doc.add_paragraph(reasoning)
+        
+        # Hiring Recommendation
+        hr = comp_data.get('hiring_recommendation', {})
+        doc.add_heading('Hiring Recommendation', level=1)
+        
+        p = doc.add_paragraph()
+        p.add_run('Primary Choice: ').bold = True
+        p.add_run(clean_text(hr.get('primary_choice', 'N/A')))
+        
+        doc.add_paragraph(clean_text(hr.get('primary_reasoning', '')))
+        
+        if hr.get('backup_choice') and hr.get('backup_choice') != 'None':
+            p = doc.add_paragraph()
+            p.add_run('Backup Choice: ').bold = True
+            p.add_run(clean_text(hr.get('backup_choice', 'N/A')))
+            doc.add_paragraph(clean_text(hr.get('backup_reasoning', '')))
+        
+        if hr.get('proceed_to_next_round'):
+            p = doc.add_paragraph()
+            p.add_run('Proceed to Next Round: ').bold = True
+            p.add_run(', '.join(hr.get('proceed_to_next_round', [])))
+        
+        if hr.get('do_not_proceed'):
+            p = doc.add_paragraph()
+            p.add_run('Do Not Proceed: ').bold = True
+            p.add_run(', '.join(hr.get('do_not_proceed', [])))
+        
+        buffer = io.BytesIO()
+        doc.save(buffer)
+        buffer.seek(0)
+        return buffer.getvalue()
+    except ImportError:
+        st.warning("📦 python-docx not installed. DOCX export unavailable.")
+        return None
+    except Exception as e:
+        st.error(f"DOCX export error: {e}")
+        return None
+
+def export_comparison_to_pdf(comp_data, candidates):
+    """Export comparison to PDF format."""
+    try:
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import inch
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+        from reportlab.lib.colors import HexColor, black, white
+        from reportlab.lib.enums import TA_CENTER, TA_LEFT
+        
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch)
+        
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle('Title', parent=styles['Title'], fontSize=24, textColor=HexColor('#6366f1'), spaceAfter=20)
+        heading_style = ParagraphStyle('Heading', parent=styles['Heading1'], fontSize=16, textColor=HexColor('#374151'), spaceBefore=16, spaceAfter=8)
+        subheading_style = ParagraphStyle('Subheading', parent=styles['Heading2'], fontSize=13, textColor=HexColor('#6366f1'), spaceBefore=12, spaceAfter=6)
+        body_style = ParagraphStyle('Body', parent=styles['Normal'], fontSize=10, textColor=HexColor('#4b5563'), spaceAfter=6)
+        
+        story = []
+        
+        # Title
+        story.append(Paragraph("Candidate Comparison Report", title_style))
+        story.append(Paragraph(f"Date: {datetime.now().strftime('%Y-%m-%d')} | Candidates: {len(candidates)}", body_style))
+        story.append(HRFlowable(width="100%", thickness=1, color=HexColor('#e5e7eb')))
+        story.append(Spacer(1, 12))
+        
+        # Executive Summary
+        story.append(Paragraph("Executive Summary", heading_style))
+        summary = clean_text(comp_data.get('executive_summary', 'No summary available.'))
+        story.append(Paragraph(summary, body_style))
+        story.append(Spacer(1, 12))
+        
+        # Comparison Table
+        table_data = comp_data.get('comparison_table', {})
+        if table_data.get('headers') and table_data.get('rows'):
+            story.append(Paragraph("Comparison Matrix", heading_style))
+            
+            headers = [clean_text(str(h)) for h in table_data['headers']]
+            rows = [[clean_text(str(cell)) for cell in row] for row in table_data['rows']]
+            
+            all_data = [headers] + rows
+            
+            # Calculate column widths
+            num_cols = len(headers)
+            col_width = (7.5 * inch) / num_cols
+            
+            table = Table(all_data, colWidths=[col_width] * num_cols)
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), HexColor('#f3f4f6')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), HexColor('#374151')),
+                ('FONTSIZE', (0, 0), (-1, 0), 9),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 1), (-1, -1), 8),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('GRID', (0, 0), (-1, -1), 0.5, HexColor('#e5e7eb')),
+                ('TOPPADDING', (0, 0), (-1, -1), 6),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ]))
+            story.append(table)
+            story.append(Spacer(1, 12))
+        
+        # Final Ranking
+        story.append(Paragraph("Final Ranking", heading_style))
+        for r in comp_data.get('final_ranking', []):
+            rank = r.get('rank', '?')
+            candidate = clean_text(r.get('candidate', 'Unknown'))
+            reasoning = clean_text(r.get('reasoning', ''))
+            
+            rank_color = '#10b981' if rank == 1 else '#eab308' if rank == 2 else '#6b7280'
+            story.append(Paragraph(f"<b>#{rank} - {candidate}</b>", subheading_style))
+            story.append(Paragraph(reasoning, body_style))
+        
+        # Hiring Recommendation
+        hr = comp_data.get('hiring_recommendation', {})
+        story.append(Paragraph("Hiring Recommendation", heading_style))
+        story.append(Paragraph(f"<b>Primary Choice:</b> {clean_text(hr.get('primary_choice', 'N/A'))}", body_style))
+        story.append(Paragraph(clean_text(hr.get('primary_reasoning', '')), body_style))
+        
+        if hr.get('backup_choice') and hr.get('backup_choice') != 'None':
+            story.append(Paragraph(f"<b>Backup Choice:</b> {clean_text(hr.get('backup_choice', 'N/A'))}", body_style))
+            story.append(Paragraph(clean_text(hr.get('backup_reasoning', '')), body_style))
+        
+        doc.build(story)
+        buffer.seek(0)
+        return buffer.getvalue()
+    except ImportError:
+        st.warning("📦 reportlab not installed. PDF export unavailable.")
+        return None
+    except Exception as e:
+        st.error(f"PDF export error: {e}")
+        return None
 
 def export_to_docx(data, title="Evaluation"):
     """Export evaluation data to DOCX"""
@@ -1092,11 +1359,13 @@ with tab_evaluate:
     
     # COMPARISON VIEW
     if step == 'comparison' and len(st.session_state.candidates) >= 2:
-        st.markdown("## Candidate Comparison")
+        st.markdown("## 📊 Candidate Comparison Report")
         
-        if st.button("← Back to Results"):
-            st.session_state.current_step = 'results'
-            st.rerun()
+        col_back, col_spacer = st.columns([1, 4])
+        with col_back:
+            if st.button("← Back to Results"):
+                st.session_state.current_step = 'results'
+                st.rerun()
         
         if st.session_state.comparison_result:
             try:
@@ -1104,27 +1373,167 @@ with tab_evaluate:
                 m = re.search(r'```json\s*(.*?)\s*```', txt, re.DOTALL)
                 comp = json.loads(m.group(1) if m else txt)
                 
-                st.markdown(f"""<div style="background:linear-gradient(135deg,rgba(99,102,241,0.1),rgba(139,92,246,0.1));border-radius:16px;padding:24px;margin-bottom:24px;">
-                    <h3 style="margin:0 0 12px;">Executive Summary</h3>
-                    <p style="color:#e5e5e5;margin:0;">{comp.get('executive_summary', '')}</p>
-                </div>""", unsafe_allow_html=True)
+                # Executive Summary - prominent box
+                st.markdown(f"""
+                <div style="background:linear-gradient(135deg,rgba(99,102,241,0.15),rgba(139,92,246,0.15));border:1px solid rgba(99,102,241,0.3);border-radius:16px;padding:28px;margin:20px 0;">
+                    <h3 style="margin:0 0 16px;color:#a5b4fc;font-size:14px;text-transform:uppercase;letter-spacing:1px;">📋 Executive Summary</h3>
+                    <p style="color:#e5e5e5;margin:0;font-size:16px;line-height:1.6;">{comp.get('executive_summary', 'No summary available.')}</p>
+                </div>
+                """, unsafe_allow_html=True)
                 
-                st.markdown("### Final Ranking")
+                # Comparison Table
+                table_data = comp.get('comparison_table', {})
+                if table_data.get('headers') and table_data.get('rows'):
+                    st.markdown("### 📈 Comparison Matrix")
+                    
+                    headers = table_data['headers']
+                    rows = table_data['rows']
+                    
+                    # Build HTML table
+                    table_html = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;background:#12121a;border-radius:12px;overflow:hidden;">'
+                    
+                    # Header row
+                    table_html += '<tr>'
+                    for h in headers:
+                        table_html += f'<th style="background:#1a1a2e;padding:14px 16px;text-align:center;color:#a5b4fc;font-weight:600;border-bottom:1px solid rgba(99,102,241,0.2);">{h}</th>'
+                    table_html += '</tr>'
+                    
+                    # Data rows
+                    for row in rows:
+                        table_html += '<tr>'
+                        for i, cell in enumerate(row):
+                            bg = 'background:#12121a;' if i > 0 else 'background:#1a1a2e;'
+                            weight = 'font-weight:600;' if i == 0 else ''
+                            table_html += f'<td style="{bg}padding:12px 16px;text-align:center;color:#e5e5e5;border-bottom:1px solid rgba(99,102,241,0.1);{weight}">{cell}</td>'
+                        table_html += '</tr>'
+                    
+                    table_html += '</table></div>'
+                    st.markdown(table_html, unsafe_allow_html=True)
+                
+                st.markdown("---")
+                
+                # Head to Head Analysis
+                if comp.get('head_to_head'):
+                    st.markdown("### ⚔️ Head-to-Head Analysis")
+                    
+                    cols = st.columns(min(3, len(comp['head_to_head'])))
+                    for idx, item in enumerate(comp['head_to_head'][:6]):  # Max 6
+                        with cols[idx % 3]:
+                            st.markdown(f"""
+                            <div style="background:#12121a;border:1px solid rgba(99,102,241,0.2);border-radius:12px;padding:16px;margin:8px 0;min-height:120px;">
+                                <p style="color:#9ca3af;margin:0 0 8px;font-size:12px;text-transform:uppercase;">{item.get('area', 'Area')}</p>
+                                <p style="color:#10b981;margin:0 0 8px;font-weight:700;">🏆 {item.get('winner', 'N/A')}</p>
+                                <p style="color:#e5e5e5;margin:0;font-size:13px;">{item.get('analysis', '')[:100]}{'...' if len(item.get('analysis', '')) > 100 else ''}</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+                
+                st.markdown("---")
+                
+                # Final Ranking
+                st.markdown("### 🏅 Final Ranking")
+                
                 for r in comp.get('final_ranking', []):
-                    rank_color = "#10b981" if r['rank'] == 1 else "#eab308" if r['rank'] == 2 else "#6b7280"
-                    st.markdown(f"""<div style="background:#12121a;border-left:4px solid {rank_color};padding:16px;margin:8px 0;border-radius:0 12px 12px 0;">
-                        <span style="color:{rank_color};font-size:24px;font-weight:bold;">#{r['rank']}</span>
-                        <span style="color:#fff;font-size:18px;margin-left:12px;">{r['candidate']}</span>
-                        <p style="color:#9ca3af;margin:8px 0 0;">{r['reasoning']}</p>
-                    </div>""", unsafe_allow_html=True)
+                    rank = r.get('rank', 0)
+                    if rank == 1:
+                        rank_color = "#10b981"
+                        rank_bg = "rgba(16,185,129,0.1)"
+                        medal = "🥇"
+                    elif rank == 2:
+                        rank_color = "#eab308"
+                        rank_bg = "rgba(234,179,8,0.1)"
+                        medal = "🥈"
+                    elif rank == 3:
+                        rank_color = "#f97316"
+                        rank_bg = "rgba(249,115,22,0.1)"
+                        medal = "🥉"
+                    else:
+                        rank_color = "#6b7280"
+                        rank_bg = "rgba(107,114,128,0.1)"
+                        medal = f"#{rank}"
+                    
+                    st.markdown(f"""
+                    <div style="background:{rank_bg};border-left:4px solid {rank_color};padding:20px;margin:12px 0;border-radius:0 12px 12px 0;">
+                        <div style="display:flex;align-items:center;gap:16px;margin-bottom:8px;">
+                            <span style="font-size:32px;">{medal}</span>
+                            <span style="color:#fff;font-size:20px;font-weight:700;">{r.get('candidate', 'Unknown')}</span>
+                        </div>
+                        <p style="color:#d1d5db;margin:0;font-size:14px;line-height:1.5;">{r.get('reasoning', '')}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
                 
+                st.markdown("---")
+                
+                # Hiring Recommendation
                 hr = comp.get('hiring_recommendation', {})
-                st.markdown("### Hiring Recommendation")
-                st.success(f"**Primary Choice:** {hr.get('primary_choice', 'N/A')}\n\n{hr.get('primary_reasoning', '')}")
-                if hr.get('backup_choice') and hr.get('backup_choice') != 'None':
-                    st.info(f"**Backup:** {hr.get('backup_choice')}")
+                st.markdown("### ✅ Hiring Recommendation")
                 
-                st.download_button("📥 Download Comparison", txt, "comparison.md", use_container_width=True)
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.markdown(f"""
+                    <div style="background:rgba(16,185,129,0.1);border:1px solid #10b981;border-radius:12px;padding:20px;">
+                        <p style="color:#9ca3af;margin:0 0 8px;font-size:12px;text-transform:uppercase;">Primary Choice</p>
+                        <p style="color:#10b981;margin:0 0 12px;font-size:20px;font-weight:700;">{hr.get('primary_choice', 'N/A')}</p>
+                        <p style="color:#e5e5e5;margin:0;font-size:14px;">{hr.get('primary_reasoning', '')}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with col2:
+                    if hr.get('backup_choice') and hr.get('backup_choice') != 'None':
+                        st.markdown(f"""
+                        <div style="background:rgba(234,179,8,0.1);border:1px solid #eab308;border-radius:12px;padding:20px;">
+                            <p style="color:#9ca3af;margin:0 0 8px;font-size:12px;text-transform:uppercase;">Backup Choice</p>
+                            <p style="color:#eab308;margin:0 0 12px;font-size:20px;font-weight:700;">{hr.get('backup_choice', 'N/A')}</p>
+                            <p style="color:#e5e5e5;margin:0;font-size:14px;">{hr.get('backup_reasoning', '')}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    else:
+                        st.markdown("""
+                        <div style="background:rgba(107,114,128,0.1);border:1px solid #6b7280;border-radius:12px;padding:20px;">
+                            <p style="color:#9ca3af;margin:0;font-size:14px;">No backup candidate recommended</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                
+                # Proceed / Do Not Proceed
+                if hr.get('proceed_to_next_round') or hr.get('do_not_proceed'):
+                    st.markdown("")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if hr.get('proceed_to_next_round'):
+                            st.success(f"**Proceed to Next Round:** {', '.join(hr.get('proceed_to_next_round', []))}")
+                    with col2:
+                        if hr.get('do_not_proceed'):
+                            st.error(f"**Do Not Proceed:** {', '.join(hr.get('do_not_proceed', []))}")
+                
+                st.markdown("---")
+                
+                # Download Buttons
+                st.markdown("### 📥 Export Comparison Report")
+                
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    md_content = export_comparison_to_markdown(comp, st.session_state.candidates)
+                    st.download_button("📥 Markdown", md_content, "comparison_report.md", use_container_width=True)
+                
+                with col2:
+                    docx_content = export_comparison_to_docx(comp, st.session_state.candidates)
+                    if docx_content:
+                        st.download_button("📥 DOCX", docx_content, "comparison_report.docx", 
+                                          mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                          use_container_width=True)
+                    else:
+                        st.button("📥 DOCX", disabled=True, use_container_width=True, help="Export failed")
+                
+                with col3:
+                    pdf_content = export_comparison_to_pdf(comp, st.session_state.candidates)
+                    if pdf_content:
+                        st.download_button("📥 PDF", pdf_content, "comparison_report.pdf",
+                                          mime="application/pdf", use_container_width=True)
+                    else:
+                        st.button("📥 PDF", disabled=True, use_container_width=True, help="Export failed")
+                
+                with col4:
+                    st.download_button("📥 JSON", json.dumps(comp, indent=2), "comparison_report.json", use_container_width=True)
                 
             except Exception as e:
                 st.error(f"Parse error: {e}")
@@ -1134,9 +1543,24 @@ with tab_evaluate:
     elif step == 'results' and st.session_state.current_candidate:
         result = st.session_state.current_candidate
         
+        # Show evaluated candidates summary bar
+        if len(st.session_state.candidates) > 0:
+            st.markdown(f"""
+            <div style="background:#12121a;border:1px solid rgba(99,102,241,0.2);border-radius:12px;padding:16px;margin-bottom:20px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span style="color:#9ca3af;font-size:14px;">Candidates Evaluated:</span>
+                        {' '.join([f'<span style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;padding:4px 12px;border-radius:16px;font-size:13px;font-weight:600;">{c.get("candidate_name", "?")}</span>' for c in st.session_state.candidates])}
+                    </div>
+                    <span style="color:#6366f1;font-weight:600;">{len(st.session_state.candidates)}/4 candidates</span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # Action buttons
         col1, col2, col3 = st.columns(3)
         with col1:
-            if st.button("← New Evaluation"):
+            if st.button("🔄 Start Fresh", use_container_width=True):
                 st.session_state.current_step = 'input'
                 st.session_state.current_candidate = None
                 st.session_state.candidates = []
@@ -1144,24 +1568,44 @@ with tab_evaluate:
                 st.rerun()
         with col2:
             if len(st.session_state.candidates) < 4:
-                if st.button(f"➕ Add Candidate ({len(st.session_state.candidates)}/4)"):
+                if st.button(f"➕ Add Another Candidate", type="primary", use_container_width=True):
                     st.session_state.current_step = 'input'
                     st.session_state.current_candidate = None
                     st.rerun()
+            else:
+                st.button("✅ Max 4 Candidates", disabled=True, use_container_width=True)
         with col3:
             if len(st.session_state.candidates) >= 2:
-                if st.button("📊 Compare All"):
-                    st.session_state.working_on = "Comparing..."
+                if st.button("📊 Compare All Candidates", use_container_width=True):
+                    st.session_state.working_on = "Comparing candidates..."
                     comp_result, _ = compare_candidates(st.session_state.candidates)
                     st.session_state.working_on = None
                     st.session_state.comparison_result = comp_result
                     st.session_state.current_step = 'comparison'
                     st.rerun()
+            else:
+                st.button("📊 Compare (need 2+)", disabled=True, use_container_width=True)
+        
+        # Candidate selector if multiple candidates
+        if len(st.session_state.candidates) > 1:
+            st.markdown("---")
+            selected_name = st.selectbox(
+                "View Candidate:",
+                [c.get('candidate_name', f'Candidate {i+1}') for i, c in enumerate(st.session_state.candidates)],
+                index=[c.get('candidate_name') for c in st.session_state.candidates].index(result.get('candidate_name')) if result.get('candidate_name') in [c.get('candidate_name') for c in st.session_state.candidates] else 0,
+                key="candidate_selector"
+            )
+            # Find and display selected candidate
+            for c in st.session_state.candidates:
+                if c.get('candidate_name') == selected_name:
+                    result = c
+                    break
         
         st.markdown("---")
         display_candidate_result(result, result.get('candidate_name', 'Candidate'))
         
         st.markdown("---")
+        st.markdown("### 📥 Export This Evaluation")
         col1, col2, col3, col4 = st.columns(4)
         with col1:
             md_content = export_to_markdown(result, result.get('candidate_name', 'Evaluation'))
