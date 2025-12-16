@@ -1,4 +1,4 @@
-"""Sharp Portal - Main Dashboard with Cross-App TAuth"""
+"""Sharp Portal - Main Dashboard with Cross-App Auth"""
 import streamlit as st
 import requests
 import os
@@ -17,6 +17,12 @@ try:
         SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_KEY,
         GOD_PASSWORD, APP_URLS
     )
+    from shared_ui import (
+        apply_global_styles,
+        render_sidebar,
+        inject_ga4,
+        COLORS
+    )
     USING_SHARED = True
 except ImportError:
     USING_SHARED = False
@@ -25,7 +31,7 @@ except ImportError:
     SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", SUPABASE_ANON_KEY)
     GOD_PASSWORD = os.environ.get("GOD_PASSWORD", "G0DHum@n101!!!")
     APP_URLS = {
-        "portal": "https://portal.sharphuman.com",
+        "portal": "https://demo.sharphuman.com",
         "jd": "https://jd.sharphuman.com",
         "screen": "https://screen.sharphuman.com",
         "interview": "https://interview.sharphuman.com",
@@ -337,7 +343,7 @@ def render_auth():
                         st.error(r["message"])
 
 
-def render_sidebar():
+def render_portal_sidebar():
     with st.sidebar:
         st.markdown(f"""
         <div style='padding:16px;background:rgba(99,102,241,0.15);border-radius:12px;margin-bottom:20px;backdrop-filter:blur(10px);'>
@@ -533,8 +539,21 @@ st.set_page_config(page_title="Sharp Suite", page_icon="🚀", layout="wide")
 init_session()
 check_url_auth()
 
+# Inject GA4 tracking
+if USING_SHARED:
+    inject_ga4()
+
 if not st.session_state.authenticated:
     render_auth()
 else:
-    render_sidebar()
+    # Use shared sidebar if available, otherwise fall back to local
+    if USING_SHARED:
+        render_sidebar(
+            current_app="portal",
+            user_email=get_user_email(),
+            user_plan=st.session_state.get('user_plan', 'free'),
+            session_token=st.session_state.get('session_token', '')
+        )
+    else:
+        render_portal_sidebar()
     render_dashboard()
