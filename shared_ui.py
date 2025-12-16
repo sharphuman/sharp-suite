@@ -547,6 +547,45 @@ def apply_global_styles():
     """Apply global styles to the current app. Call this early in your app."""
     st.markdown(get_global_css(), unsafe_allow_html=True)
 
+
+# ===========================================
+# GOOGLE ANALYTICS (GA4) TRACKING
+# ===========================================
+
+GA4_MEASUREMENT_ID = "G-BM04LFY3FJ"
+
+def inject_ga4():
+    """Inject Google Analytics 4 tracking script. Call once at app start."""
+    ga_script = f"""
+    <script async src="https://www.googletagmanager.com/gtag/js?id={GA4_MEASUREMENT_ID}"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){{dataLayer.push(arguments);}}
+        gtag('js', new Date());
+        gtag('config', '{GA4_MEASUREMENT_ID}');
+    </script>
+    """
+    st.markdown(ga_script, unsafe_allow_html=True)
+
+
+def track_event(event_name: str, params: dict = None):
+    """
+    Track a custom GA4 event.
+    
+    Usage:
+        track_event("demo_signup", {"plan": "free"})
+        track_event("feature_used", {"app": "interview", "feature": "evaluate"})
+    """
+    params_js = ", ".join([f"'{k}': '{v}'" for k, v in (params or {}).items()])
+    event_script = f"""
+    <script>
+        if (typeof gtag !== 'undefined') {{
+            gtag('event', '{event_name}', {{{params_js}}});
+        }}
+    </script>
+    """
+    st.markdown(event_script, unsafe_allow_html=True)
+
 # ===========================================
 # AUTH STYLES (for login page)
 # ===========================================
