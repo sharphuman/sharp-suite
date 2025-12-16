@@ -38,7 +38,7 @@ except ImportError:
     GOD_PASSWORD = os.environ.get("GOD_PASSWORD", "G0DHum@n101!!!")
     ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
     CLAUDE_MODEL = "claude-sonnet-4-20250514"
-    APP_URLS = {"portal": "https://demo.sharphuman.com", "jd": "https://jd.sharphuman.com", "screen": "https://screen.sharphuman.com", "interview": "https://interview.sharphuman.com", "source": "https://outreach.sharphuman.com", "content": "https://content.sharphuman.com", "sales": "https://sales.sharphuman.com", "reach": "https://reach.sharphuman.com", "assistant": "https://assistant.sharphuman.com", "admin": "https://admin.sharphuman.com"}
+    APP_URLS = {"portal": "https://portal.sharphuman.com", "jd": "https://jd.sharphuman.com", "screen": "https://screen.sharphuman.com", "interview": "https://interview.sharphuman.com", "outreach": "https://outreach.sharphuman.com", "content": "https://content.sharphuman.com", "sales": "https://sales.sharphuman.com", "admin": "https://admin.sharphuman.com"}
 
 # Try to import few-shot examples
 try:
@@ -727,7 +727,7 @@ if st.session_state.working_on: st.markdown(f'<div class="status-badge">{st.sess
 with st.sidebar:
     st.markdown(f"""<div class="user-card"><p style="color:#9ca3af;margin:0;font-size:12px;">Logged in as</p><p style="color:#fff;margin:4px 0;font-weight:600;">{get_user_email()}</p><p style="color:#6366f1;margin:0;font-size:12px;text-transform:uppercase;">{st.session_state.get('user_plan','free')} plan</p></div>""", unsafe_allow_html=True)
     st.markdown("**Apps**")
-    for key, label in [("portal", "🏠 Portal"), ("jd", "📝 JD Writer"), ("screen", "🔍 CV Screener"), ("interview", "🎯 Interview"), ("source", "🎣 Sourcing"), ("content", "✍️ Content"), ("sales", "💰 Sales"), ("reach", "🚀 Reach"), ("assistant", "🤖 Assistant")]:
+    for key, label in [("portal", "🏠 Portal"), ("jd", "📝 JD Writer"), ("screen", "🔍 CV Screener"), ("interview", "🎯 Interview"), ("content", "✍️ Content"), ("outreach", "🚀 Outreach"), ("content", "✍️ Content"), ("sales", "💰 Sales"), ]:
         if key == "sales": st.markdown(f"<div style='background:linear-gradient(135deg,#6366f1,#8b5cf6);padding:10px 16px;border-radius:8px;text-align:center;margin:4px 0;color:white;font-weight:600;'>{label} ◀</div>", unsafe_allow_html=True)
         else: st.link_button(label, build_app_url(key), use_container_width=True)
     if st.session_state.get("is_god"): st.markdown("---"); st.link_button("⚙️ Admin", build_app_url("admin"), use_container_width=True)
