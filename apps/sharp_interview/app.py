@@ -205,6 +205,72 @@ def submit_feedback(app, feedback_type, message):
     except:
         return False
 
+def submit_analysis_feedback(result_data, feedback, reason=None, comment=None):
+    """
+    Submit feedback on an AI analysis result.
+    Stores metadata only - no PII or transcript content.
+    
+    Args:
+        result_data: The AI analysis result dict
+        feedback: 'thumbs_up' or 'thumbs_down'
+        reason: Optional reason code (e.g., 'too_generic', 'missed_red_flag')
+        comment: Optional free-text comment
+    """
+    try:
+        user_id = st.session_state.user.get("id") if st.session_state.user else None
+        
+        # Extract metadata from result (no PII)
+        analysis_settings = result_data.get('analysis_settings', {})
+        
+        payload = {
+            "user_id": user_id,
+            "app": "interview",
+            "persona": analysis_settings.get('persona', 'balanced'),
+            "rigor_level": analysis_settings.get('rigor', 'balanced'),
+            "overall_score": result_data.get('overall_score'),
+            "recommendation": result_data.get('recommendation'),
+            "feedback": feedback,
+            "feedback_reason": reason,
+            "feedback_comment": comment
+        }
+        
+        r = requests.post(
+            f"{SUPABASE_URL}/rest/v1/analysis_feedback", 
+            headers={
+                "apikey": SUPABASE_ANON_KEY, 
+                "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}", 
+                "Content-Type": "application/json", 
+                "Prefer": "return=minimal"
+            }, 
+            json=payload, 
+            timeout=10
+        )
+        return r.status_code in [200, 201]
+    except Exception as e:
+        if HAS_LOGGING:
+            log.error(f"Failed to submit analysis feedback: {e}")
+        return False
+
+# Feedback reason options
+FEEDBACK_REASONS = {
+    "thumbs_down": [
+        ("too_generic", "Too generic / vague"),
+        ("missed_red_flag", "Missed obvious red flag"),
+        ("wrong_score", "Score feels wrong"),
+        ("missed_strength", "Missed key strength"),
+        ("hallucination", "Made up / hallucinated info"),
+        ("poor_evidence", "Weak evidence cited"),
+        ("other", "Other")
+    ],
+    "thumbs_up": [
+        ("accurate", "Accurate assessment"),
+        ("good_evidence", "Great evidence/quotes"),
+        ("caught_red_flag", "Caught something I missed"),
+        ("helpful_insights", "Helpful insights"),
+        ("other", "Other")
+    ]
+}
+
 def get_jd_history(limit=20):
     user_id = st.session_state.user.get("id") if st.session_state.user else None
     if not user_id or user_id == "god":
@@ -221,7 +287,8 @@ def init_session():
         ('authenticated', False), ('user', None), ('is_god', False), ('session_token', None),
         ('user_plan', 'free'), ('working_on', None), ('current_step', 'input'),
         ('candidates', []), ('current_candidate', None), ('comparison_result', None),
-        ('questions_result', None), ('jd_text', ''), ('cv_text', '')
+        ('questions_result', None), ('jd_text', ''), ('cv_text', ''),
+        ('feedback_given', {})  # Track which candidates have received feedback
     ]
     for k, v in defaults:
         if k not in st.session_state:
@@ -1209,14 +1276,17 @@ def display_candidate_result(result_data, candidate_name):
     analysis_settings = result_data.get('analysis_settings', {})
     persona_used = analysis_settings.get('persona', '')
     rigor_used = analysis_settings.get('rigor', '')
+    
+    # Build settings badge HTML separately to avoid f-string nesting issues
+    badge_items = []
+    if persona_used:
+        badge_items.append(f'<span style="background:rgba(99,102,241,0.2);color:#a5b4fc;padding:4px 10px;border-radius:12px;font-size:11px;">{persona_used}</span>')
+    if rigor_used:
+        badge_items.append(f'<span style="background:rgba(139,92,246,0.2);color:#c4b5fd;padding:4px 10px;border-radius:12px;font-size:11px;">{rigor_used}</span>')
+    
     settings_badge = ""
-    if persona_used or rigor_used:
-        settings_badge = f"""
-        <div style="display:flex;gap:8px;margin-top:8px;">
-            {f'<span style="background:rgba(99,102,241,0.2);color:#a5b4fc;padding:4px 10px;border-radius:12px;font-size:11px;">{persona_used}</span>' if persona_used else ''}
-            {f'<span style="background:rgba(139,92,246,0.2);color:#c4b5fd;padding:4px 10px;border-radius:12px;font-size:11px;">{rigor_used}</span>' if rigor_used else ''}
-        </div>
-        """
+    if badge_items:
+        settings_badge = '<div style="display:flex;gap:8px;margin-top:8px;">' + ''.join(badge_items) + '</div>'
     
     st.markdown(f"""
     <div style="background:linear-gradient(135deg,rgba(99,102,241,0.1),rgba(139,92,246,0.1));border-radius:16px;padding:30px;margin-bottom:24px;">
@@ -1771,6 +1841,77 @@ with tab_evaluate:
                 st.button("📥 PDF", disabled=True, use_container_width=True, help="PDF export failed - check dependencies")
         with col4:
             st.download_button("📥 JSON", json.dumps(result, indent=2), f"{result.get('candidate_name', 'eval')}.json", use_container_width=True)
+        
+        # ============================================
+        # FEEDBACK SECTION (Option 5)
+        # ============================================
+        st.markdown("---")
+        st.markdown("### 💬 Rate This Analysis")
+        
+        candidate_key = result.get('candidate_name', 'unknown')
+        already_submitted = st.session_state.feedback_given.get(candidate_key)
+        
+        if already_submitted:
+            feedback_emoji = "👍" if already_submitted == "thumbs_up" else "👎"
+            st.success(f"Thanks for your feedback! {feedback_emoji}")
+        else:
+            st.caption("Your feedback helps improve our AI analysis")
+            
+            fb_col1, fb_col2, fb_col3 = st.columns([1, 1, 3])
+            
+            with fb_col1:
+                thumbs_up = st.button("👍 Helpful", use_container_width=True, key=f"thumbs_up_{candidate_key}")
+            
+            with fb_col2:
+                thumbs_down = st.button("👎 Not Helpful", use_container_width=True, key=f"thumbs_down_{candidate_key}")
+            
+            # Handle thumbs up
+            if thumbs_up:
+                if submit_analysis_feedback(result, "thumbs_up"):
+                    st.session_state.feedback_given[candidate_key] = "thumbs_up"
+                    st.rerun()
+                else:
+                    st.error("Failed to submit feedback")
+            
+            # Handle thumbs down - show reason selector
+            if thumbs_down:
+                st.session_state[f"show_reason_{candidate_key}"] = True
+            
+            if st.session_state.get(f"show_reason_{candidate_key}"):
+                with st.container():
+                    st.markdown('<div class="input-card" style="margin-top:12px;">', unsafe_allow_html=True)
+                    st.markdown("**What went wrong?**")
+                    
+                    reason_options = FEEDBACK_REASONS["thumbs_down"]
+                    selected_reason = st.radio(
+                        "Select issue:",
+                        options=[r[0] for r in reason_options],
+                        format_func=lambda x: dict(reason_options)[x],
+                        key=f"reason_{candidate_key}",
+                        label_visibility="collapsed"
+                    )
+                    
+                    comment = st.text_input(
+                        "Additional details (optional):",
+                        placeholder="e.g., 'Missed the 2-year employment gap'",
+                        key=f"comment_{candidate_key}"
+                    )
+                    
+                    submit_col1, submit_col2 = st.columns(2)
+                    with submit_col1:
+                        if st.button("Submit Feedback", type="primary", use_container_width=True, key=f"submit_fb_{candidate_key}"):
+                            if submit_analysis_feedback(result, "thumbs_down", selected_reason, comment):
+                                st.session_state.feedback_given[candidate_key] = "thumbs_down"
+                                st.session_state[f"show_reason_{candidate_key}"] = False
+                                st.rerun()
+                            else:
+                                st.error("Failed to submit feedback")
+                    with submit_col2:
+                        if st.button("Cancel", use_container_width=True, key=f"cancel_fb_{candidate_key}"):
+                            st.session_state[f"show_reason_{candidate_key}"] = False
+                            st.rerun()
+                    
+                    st.markdown('</div>', unsafe_allow_html=True)
     
     # INPUT VIEW
     else:
