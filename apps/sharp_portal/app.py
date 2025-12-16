@@ -406,57 +406,57 @@ def render_dashboard():
         background: rgba(0, 0, 0, 0.5);
         backdrop-filter: blur(10px);
         border: 1px solid rgba(59, 130, 246, 0.3);
-        border-radius: 20px;
-        padding: 28px;
+        border-radius: 16px;
+        padding: 20px;
         height: 100%;
         transition: all 0.3s ease;
     }
     .app-tile:hover {
         border-color: rgba(59, 130, 246, 0.8);
-        transform: translateY(-5px);
-        box-shadow: 0 20px 40px rgba(59, 130, 246, 0.25);
+        transform: translateY(-4px);
+        box-shadow: 0 15px 30px rgba(59, 130, 246, 0.2);
     }
     
     .app-icon {
-        font-size: 3rem;
-        margin-bottom: 16px;
+        font-size: 2.2rem;
+        margin-bottom: 12px;
     }
     
     .app-title {
-        font-size: 1.6rem;
+        font-size: 1.3rem;
         font-weight: 700;
         color: white !important;
-        margin: 0 0 6px 0;
+        margin: 0 0 4px 0;
     }
     
     .app-tagline {
-        font-size: 1.1rem;
+        font-size: 0.95rem;
         color: #60a5fa !important;
-        margin: 0 0 18px 0;
+        margin: 0 0 12px 0;
         font-weight: 500;
     }
     
     .app-desc {
-        font-size: 1rem;
+        font-size: 0.9rem;
         color: #b8b8b8 !important;
-        line-height: 1.7;
-        margin: 0 0 24px 0;
+        line-height: 1.6;
+        margin: 0 0 16px 0;
     }
     
     .app-button {
         display: inline-block;
         background: linear-gradient(135deg, #6366f1, #8b5cf6);
         color: white !important;
-        padding: 12px 28px;
-        border-radius: 10px;
+        padding: 10px 22px;
+        border-radius: 8px;
         font-weight: 600;
-        font-size: 1rem;
+        font-size: 0.9rem;
         text-decoration: none;
         transition: all 0.2s ease;
     }
     .app-button:hover {
         transform: scale(1.05);
-        box-shadow: 0 8px 25px rgba(99,102,241,0.5);
+        box-shadow: 0 6px 20px rgba(99,102,241,0.4);
         color: white !important;
         text-decoration: none;
     }
@@ -465,9 +465,9 @@ def render_dashboard():
         background: rgba(0, 0, 0, 0.5);
         backdrop-filter: blur(10px);
         border: 1px solid rgba(59, 130, 246, 0.3);
-        border-radius: 20px;
-        padding: 36px;
-        margin-bottom: 36px;
+        border-radius: 16px;
+        padding: 28px;
+        margin-bottom: 28px;
     }
     
     .stLinkButton > a {
@@ -481,11 +481,11 @@ def render_dashboard():
     
     # Header
     st.markdown("""
-    <div style="display:flex;align-items:center;gap:20px;padding:24px 0;border-bottom:1px solid rgba(59,130,246,0.3);margin-bottom:36px;">
-        <img src="https://sharphuman.com/logo1-3.png" style="width:60px;">
+    <div style="display:flex;align-items:center;gap:16px;padding:20px 0;border-bottom:1px solid rgba(59,130,246,0.3);margin-bottom:28px;">
+        <img src="https://sharphuman.com/logo1-3.png" style="width:50px;">
         <div>
-            <h1 style="margin:0;font-size:2.2rem;">Sharp Suite</h1>
-            <p style="color:#9ca3af;margin:0;font-size:1.1rem;">Your AI Recruiting Toolkit</p>
+            <h1 style="margin:0;font-size:1.8rem;">Sharp Suite</h1>
+            <p style="color:#9ca3af;margin:0;font-size:1rem;">Your AI Recruiting Toolkit</p>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -494,8 +494,8 @@ def render_dashboard():
     user_name = get_user_email().split('@')[0].title() if '@' in get_user_email() else get_user_email()
     st.markdown(f"""
     <div class="welcome-section">
-        <h2 style="margin:0 0 16px 0;font-size:1.8rem;">👋 Welcome back, {user_name}!</h2>
-        <p style="color:#c4c4c4;margin:0;font-size:1.15rem;line-height:1.8;">
+        <h2 style="margin:0 0 12px 0;font-size:1.4rem;">👋 Welcome back, {user_name}!</h2>
+        <p style="color:#c4c4c4;margin:0;font-size:1rem;line-height:1.7;">
             Sharp Suite is your AI-powered recruiting command center. Whether you're writing job descriptions, 
             screening candidates, prepping for interviews, or crafting outreach that actually gets replies, 
             we've got the tools to help you work smarter. Pick an app below to get started.
@@ -522,7 +522,7 @@ def render_dashboard():
                         <a href="{app_url}" class="app-button">Open {app['title']} →</a>
                     </div>
                     """, unsafe_allow_html=True)
-                    st.markdown("<div style='height:24px;'></div>", unsafe_allow_html=True)
+                    st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
 
 
 # ============================================
