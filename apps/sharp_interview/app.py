@@ -40,6 +40,17 @@ except ImportError:
                 print(f"[WARN] Failed to import {module}: {error_msg}")
     log = FallbackLog()
 
+# Try to import few-shot examples
+try:
+    from interview_examples import get_few_shot_examples
+    HAS_EXAMPLES = True
+    log.log_import_status(True, "interview_examples")
+except ImportError:
+    HAS_EXAMPLES = False
+    log.log_import_status(False, "interview_examples", "File not found")
+    def get_few_shot_examples():
+        return ""  # Empty fallback
+
 # Now import shared config and UI
 try:
     from shared_config import (
@@ -644,9 +655,15 @@ Before providing your final assessment, you MUST:
 5. **FINAL SCORING**: Only after steps 1-4, calculate the overall score based on evidence, not impressions.
 """
 
+    # Get few-shot examples (Option 6)
+    few_shot_section = ""
+    if HAS_EXAMPLES:
+        few_shot_section = get_few_shot_examples()
+
     prompt = f"""{system_context}
 
 You are evaluating an interview. Follow the analysis process carefully.
+{few_shot_section}
 
 ## CANDIDATE: {candidate_name}
 
