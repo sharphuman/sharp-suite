@@ -1,5 +1,5 @@
 """
-Sharp Suite - Shared Configuration
+Sharp Suite - Shared TConfiguration
 ===================================
 All apps import from this single source of truth.
 
