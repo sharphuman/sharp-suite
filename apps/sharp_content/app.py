@@ -1,4 +1,4 @@
-"""Sharp Content - AI Content Engine with Multi-Format Export"""
+"""Sharp Content - AI Content Engine with Multi-Format TExport"""
 import streamlit as st
 import os
 import requests
