@@ -3187,7 +3187,7 @@ with tab_coach:
 
 # Feedback Widget
 if USING_SHARED:
-    render_feedback_widget("interview", submit_feedback)
+    render_feedback_widget("interview")
 else:
     st.markdown('<div style="height:60px;"></div>', unsafe_allow_html=True)
     _, _, _, fb = st.columns([4, 1, 1, 1])
