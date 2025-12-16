@@ -1,7 +1,5 @@
 """
 Sharp Suite - Shared Configuration
-===================================
-Centralized config for all apps.
 """
 
 import os
