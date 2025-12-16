@@ -1,4 +1,4 @@
-"""Sharp Interview - AI Interview Evaluation with Multi-Candidate Comparison"""
+"""Sharp Interview - AI Interview Evaluation with Multi-Candidate TComparison"""
 import streamlit as st
 import os
 import requests
@@ -60,10 +60,9 @@ try:
     from shared_ui import (
         apply_global_styles,
         render_top_banner,
-        render_header,
+        render_app_header,
         render_sidebar,
         render_feedback_widget,
-        
         COLORS
     )
     USING_SHARED = True
@@ -82,7 +81,41 @@ except ImportError as e:
     ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
     CLAUDE_MODEL = "claude-sonnet-4-20250514"
     APP_URLS = {"portal": "https://demo.sharphuman.com", "jd": "https://jd.sharphuman.com", "screen": "https://screen.sharphuman.com", "interview": "https://interview.sharphuman.com", "outreach": "https://outreach.sharphuman.com", "content": "https://content.sharphuman.com", "sales": "https://sales.sharphuman.com", "admin": "https://admin.sharphuman.com"}
-    COLORS = {"primary": "#6366f1", "secondary": "#8b5cf6", "success": "#10b981", "warning": "#eab308", "error": "#ef4444"}
+    COLORS = {"primary": "#ff4b4b", "success": "#21c354", "warning": "#faca2b", "error": "#ff4b4b"}
+    
+    # Fallback UI functions
+    def apply_global_styles():
+        pass
+    
+    def render_top_banner(**kwargs):
+        st.link_button("Services", "https://sharphuman.com#services")
+    
+    def render_app_header(title, subtitle=""):
+        st.title(title)
+        if subtitle:
+            st.caption(subtitle)
+        st.divider()
+    
+    def render_sidebar(current_app, user_email="", user_plan="free", session_token=""):
+        with st.sidebar:
+            st.title("Sharp Suite")
+            st.write(f"**{user_email}**")
+            st.caption(f"{user_plan.upper()} Plan")
+            st.divider()
+            for key, url in APP_URLS.items():
+                if key == current_app:
+                    st.success(f"**{key.title()}** ◀")
+                else:
+                    full_url = f"{url}?token={session_token}" if session_token else url
+                    st.link_button(key.title(), full_url, use_container_width=True)
+            st.divider()
+            if st.button("🚪 Logout", use_container_width=True):
+                for k in list(st.session_state.keys()):
+                    del st.session_state[k]
+                st.rerun()
+    
+    def render_feedback_widget(app_name=""):
+        pass
 
 FOCUS_AREAS = ["Technical Skills", "Problem Solving", "Communication", "Leadership", "Cultural Fit", "Experience Depth", "Motivation", "Collaboration"]
 INTERVIEW_STAGES = ["Phone Screen", "Technical Round", "Hiring Manager", "Final Round", "Culture Fit", "Panel Interview"]
