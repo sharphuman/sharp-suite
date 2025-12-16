@@ -140,6 +140,60 @@ RIGOR_LEVELS = {
 }
 
 # ============================================
+# QUESTION GENERATION STYLES (Tab 2 Enhancement)
+# ============================================
+QUESTION_STYLES = {
+    "standard": {
+        "name": "🎯 Standard Interviewer",
+        "description": "Balanced mix of behavioral and technical questions",
+        "prompt_modifier": "Generate a balanced mix of behavioral (STAR format) and technical questions. Focus on past experience and problem-solving."
+    },
+    "technical_deep": {
+        "name": "🔬 Technical Deep-Dive",
+        "description": "Heavy focus on architecture, coding, system design",
+        "prompt_modifier": "Focus heavily on technical depth. Include system design questions, coding scenarios, and architecture discussions. Probe for specific technical decisions and trade-offs. Less emphasis on soft skills."
+    },
+    "culture_fit": {
+        "name": "🤝 Culture & Soft Skills",
+        "description": "Team dynamics, communication, values alignment",
+        "prompt_modifier": "Focus on soft skills, team dynamics, and cultural fit. Include questions about collaboration, conflict resolution, giving/receiving feedback, and work style. Less emphasis on technical skills."
+    },
+    "rapid_screen": {
+        "name": "🏃 Rapid Screen",
+        "description": "Quick qualification questions for phone screens",
+        "prompt_modifier": "Generate concise, efficient questions for a quick phone screen. Focus on must-have qualifications and deal-breakers. Questions should be answerable in 1-2 minutes each."
+    },
+    "stress_test": {
+        "name": "🎭 Stress Test",
+        "description": "Challenging scenarios to test pressure handling",
+        "prompt_modifier": "Include challenging scenarios that test how candidates handle pressure, ambiguity, and difficult situations. Add curveball questions and ethical dilemmas. Test for composure and critical thinking under stress."
+    }
+}
+
+DIFFICULTY_LEVELS = {
+    "junior": {
+        "name": "🌱 Junior-Friendly",
+        "description": "Entry-level, focus on potential",
+        "prompt_modifier": "Calibrate for junior/entry-level candidates. Focus on learning ability, enthusiasm, and foundational knowledge. Avoid questions requiring extensive experience. Accept theoretical knowledge over practical examples."
+    },
+    "mid": {
+        "name": "⚖️ Mid-Level",
+        "description": "2-5 years experience expected",
+        "prompt_modifier": "Calibrate for mid-level candidates with 2-5 years experience. Expect concrete examples from past work. Probe for independent problem-solving and growing ownership."
+    },
+    "senior": {
+        "name": "🔥 Senior/Lead",
+        "description": "5+ years, leadership expected",
+        "prompt_modifier": "Calibrate for senior candidates. Expect deep expertise, mentorship examples, and strategic thinking. Probe for technical leadership, architecture decisions, and cross-team influence."
+    },
+    "staff": {
+        "name": "💀 Staff/Principal",
+        "description": "Expert level, org-wide impact",
+        "prompt_modifier": "Calibrate for staff/principal level. Expect org-wide impact, technical vision, and executive communication. Probe for building systems at scale, influencing without authority, and long-term technical strategy."
+    }
+}
+
+# ============================================
 # AUTH FUNCTIONS
 # ============================================
 
@@ -299,7 +353,9 @@ def init_session():
         ('user_plan', 'free'), ('working_on', None), ('current_step', 'input'),
         ('candidates', []), ('current_candidate', None), ('comparison_result', None),
         ('questions_result', None), ('jd_text', ''), ('cv_text', ''),
-        ('feedback_given', {})  # Track which candidates have received feedback
+        ('feedback_given', {}),  # Track which candidates have received feedback
+        ('locked_settings', None),  # Lock persona/rigor/focus after first candidate
+        ('coach_result', None)  # Recruiter coach result
     ]
     for k, v in defaults:
         if k not in st.session_state:
@@ -558,7 +614,28 @@ def call_claude(prompt, max_tokens=8000, action="interview"):
 # QUESTION GENERATOR
 # ============================================
 
-def generate_questions(job_title, requirements, stage, duration, focus_areas, cv_text="", exclude_illegal=True):
+def generate_questions(job_title, requirements, stage, duration, focus_areas, cv_text="", exclude_illegal=True, style="standard", difficulty="mid", company_context=""):
+    """
+    Generate interview questions with customizable style and difficulty.
+    
+    Args:
+        style: Key from QUESTION_STYLES
+        difficulty: Key from DIFFICULTY_LEVELS
+        company_context: Optional company/team context for tailored questions
+    """
+    
+    # Get style and difficulty settings
+    style_config = QUESTION_STYLES.get(style, QUESTION_STYLES["standard"])
+    difficulty_config = DIFFICULTY_LEVELS.get(difficulty, DIFFICULTY_LEVELS["mid"])
+    
+    company_section = ""
+    if company_context and company_context.strip():
+        company_section = f"""
+## COMPANY/TEAM CONTEXT
+Tailor questions to probe for fit with this environment:
+{company_context}
+"""
+
     prompt = f"""You are an expert interviewer. Generate interview questions for:
 
 ## ROLE: {job_title}
@@ -570,6 +647,12 @@ def generate_questions(job_title, requirements, stage, duration, focus_areas, cv
 ## DURATION: {duration} minutes
 ## FOCUS AREAS: {', '.join(focus_areas)}
 
+## QUESTION STYLE: {style_config['name']}
+{style_config['prompt_modifier']}
+
+## DIFFICULTY LEVEL: {difficulty_config['name']}
+{difficulty_config['prompt_modifier']}
+{company_section}
 {f"## CANDIDATE CV (for tailored questions):{chr(10)}{cv_text[:3000]}" if cv_text else ""}
 
 {"IMPORTANT: Exclude any questions that could be considered discriminatory (age, religion, family status, etc.)" if exclude_illegal else ""}
@@ -578,6 +661,10 @@ Generate a structured interview guide with:
 
 ```json
 {{
+    "settings": {{
+        "style": "{style_config['name']}",
+        "difficulty": "{difficulty_config['name']}"
+    }},
     "opening": {{
         "icebreaker": "<warm-up question>",
         "role_intro": "<question about their understanding of the role>"
@@ -607,9 +694,41 @@ Generate a structured interview guide with:
 }}
 ```
 
-Generate {max(3, duration // 10)} questions appropriate for {duration} minutes. Prioritize behavioral (STAR) and situational questions."""
+Generate {max(3, duration // 10)} questions appropriate for {duration} minutes."""
 
     return call_claude(prompt, max_tokens=4000, action="generate_questions")
+
+
+def get_recruiter_coaching(topic, context="", experience_level="mid"):
+    """
+    Recruiter Coach - provides guidance and advice on interviewing topics.
+    
+    Args:
+        topic: The topic/question the recruiter wants help with
+        context: Optional context about the specific situation
+        experience_level: Recruiter's experience level for calibrated advice
+    """
+    
+    prompt = f"""You are an expert recruiting coach with 20+ years of experience helping recruiters and hiring managers improve their interviewing skills. You're friendly, supportive, and practical.
+
+## RECRUITER'S QUESTION
+{topic}
+
+{f"## ADDITIONAL CONTEXT{chr(10)}{context}" if context else ""}
+
+## RECRUITER EXPERIENCE LEVEL: {experience_level}
+
+Provide helpful, actionable coaching. Include:
+1. Direct answer to their question
+2. Practical tips they can use immediately
+3. Common mistakes to avoid
+4. Example scripts or phrases where helpful
+
+Keep your tone warm and encouraging, like a supportive mentor. Be specific and practical, not theoretical.
+
+Format your response in clear sections with headers. Use bullet points for lists. Include example dialogue where relevant."""
+
+    return call_claude(prompt, max_tokens=3000, action="recruiter_coach")
 
 # ============================================
 # EVALUATION FUNCTIONS
@@ -1583,7 +1702,7 @@ if st.session_state.candidates:
     st.markdown(f"**Evaluated:** {chips}", unsafe_allow_html=True)
 
 # Main Tabs
-tab_evaluate, tab_questions = st.tabs(["🎯 Evaluate Interview", "❓ Generate Questions"])
+tab_evaluate, tab_questions, tab_coach = st.tabs(["🎯 Evaluate Interview", "❓ Generate Questions", "🎓 Recruiter Coach"])
 
 # ============================================
 # TAB 1: EVALUATE INTERVIEW
@@ -1799,6 +1918,7 @@ with tab_evaluate:
                 st.session_state.current_candidate = None
                 st.session_state.candidates = []
                 st.session_state.comparison_result = None
+                st.session_state.locked_settings = None  # Reset locked settings
                 st.rerun()
         with col2:
             if len(st.session_state.candidates) < 4:
@@ -1837,6 +1957,28 @@ with tab_evaluate:
         
         st.markdown("---")
         display_candidate_result(result, result.get('candidate_name', 'Candidate'))
+        
+        # ============================================
+        # KEY CONCERNS ADDRESSED SECTION
+        # ============================================
+        key_concerns_input = result.get('key_concerns_input', '')
+        key_concerns_addressed = result.get('key_concerns_addressed', {})
+        
+        if key_concerns_input or key_concerns_addressed:
+            st.markdown("---")
+            st.markdown("### 🎯 Key Concerns Addressed")
+            
+            if key_concerns_addressed and isinstance(key_concerns_addressed, dict):
+                for concern, assessment in key_concerns_addressed.items():
+                    st.markdown(f"""
+                    <div style="background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.3);border-radius:12px;padding:16px;margin:8px 0;">
+                        <p style="color:#a5b4fc;font-weight:600;margin:0 0 8px;">❓ {concern}</p>
+                        <p style="color:#e5e5e5;margin:0;">{assessment}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+            elif key_concerns_input:
+                st.info(f"Your concerns: {key_concerns_input[:200]}...")
+                st.caption("The AI addressed these concerns in the overall assessment above.")
         
         st.markdown("---")
         st.markdown("### 📥 Export This Evaluation")
@@ -1929,6 +2071,42 @@ with tab_evaluate:
                             st.rerun()
                     
                     st.markdown('</div>', unsafe_allow_html=True)
+        
+        # ============================================
+        # ACTION TABS AT BOTTOM (no scroll needed)
+        # ============================================
+        st.markdown("---")
+        st.markdown("### ⚡ Quick Actions")
+        
+        bottom_col1, bottom_col2, bottom_col3 = st.columns(3)
+        with bottom_col1:
+            if st.button("🔄 Start Fresh", use_container_width=True, key="bottom_fresh"):
+                st.session_state.current_step = 'input'
+                st.session_state.current_candidate = None
+                st.session_state.candidates = []
+                st.session_state.comparison_result = None
+                st.session_state.locked_settings = None  # Reset locked settings
+                st.rerun()
+        with bottom_col2:
+            if len(st.session_state.candidates) < 4:
+                if st.button(f"➕ Add Another Candidate", type="primary", use_container_width=True, key="bottom_add"):
+                    st.session_state.current_step = 'input'
+                    st.session_state.current_candidate = None
+                    st.rerun()
+            else:
+                st.button("✅ Max 4 Candidates", disabled=True, use_container_width=True, key="bottom_max")
+        with bottom_col3:
+            if len(st.session_state.candidates) >= 2:
+                if st.button("📊 Compare All Candidates", use_container_width=True, key="bottom_compare"):
+                    with st.spinner("Comparing candidates..."):
+                        st.session_state.working_on = "Comparing candidates..."
+                        comp_result, _ = compare_candidates(st.session_state.candidates)
+                        st.session_state.working_on = None
+                    st.session_state.comparison_result = comp_result
+                    st.session_state.current_step = 'comparison'
+                    st.rerun()
+            else:
+                st.button("📊 Compare (need 2+)", disabled=True, use_container_width=True, key="bottom_compare_disabled")
     
     # INPUT VIEW
     else:
@@ -2014,41 +2192,58 @@ with tab_evaluate:
                 transcript = st.text_area("Paste Transcript:", height=200, placeholder="Interviewer: Thanks for joining...\nCandidate: Thank you...", key=f"trans_paste_{candidate_num}")
             st.markdown('</div>', unsafe_allow_html=True)
             
+            # Check if settings are locked from previous candidate
+            settings_locked = st.session_state.locked_settings is not None
+            locked = st.session_state.locked_settings or {}
+            
             st.markdown('<div class="input-card">', unsafe_allow_html=True)
             st.markdown("**🎯 Focus Areas**")
-            focus_areas = st.multiselect("Select:", FOCUS_AREAS, default=["Technical Skills", "Communication", "Problem Solving"], key=f"focus_{candidate_num}")
+            if settings_locked:
+                st.info(f"🔒 Locked for fair comparison: {', '.join(locked.get('focus_areas', []))}")
+                focus_areas = locked.get('focus_areas', ["Technical Skills", "Communication", "Problem Solving"])
+            else:
+                focus_areas = st.multiselect("Select:", FOCUS_AREAS, default=["Technical Skills", "Communication", "Problem Solving"], key=f"focus_{candidate_num}")
             st.markdown('</div>', unsafe_allow_html=True)
             
             # Analysis Settings (Options 1-3)
             st.markdown('<div class="input-card">', unsafe_allow_html=True)
             st.markdown("**⚙️ Analysis Settings**")
             
-            # Option 1: Evaluator Persona
-            persona_options = {v["name"]: k for k, v in EVALUATOR_PERSONAS.items()}
-            selected_persona_name = st.selectbox(
-                "Evaluate as:",
-                options=list(persona_options.keys()),
-                index=0,
-                key=f"persona_{candidate_num}",
-                help="Different perspectives catch different things"
-            )
-            selected_persona = persona_options[selected_persona_name]
+            if settings_locked:
+                st.info(f"🔒 Locked for fair comparison")
+                st.markdown(f"**Persona:** {locked.get('persona_name', 'Balanced')}")
+                st.markdown(f"**Rigor:** {locked.get('rigor_name', 'Balanced')}")
+                selected_persona = locked.get('persona', 'balanced')
+                selected_persona_name = locked.get('persona_name', '⚖️ Balanced Reviewer')
+                selected_rigor = locked.get('rigor', 'balanced')
+                selected_rigor_name = locked.get('rigor_name', '⚖️ Balanced')
+            else:
+                # Option 1: Evaluator Persona
+                persona_options = {v["name"]: k for k, v in EVALUATOR_PERSONAS.items()}
+                selected_persona_name = st.selectbox(
+                    "Evaluate as:",
+                    options=list(persona_options.keys()),
+                    index=0,
+                    key=f"persona_{candidate_num}",
+                    help="Different perspectives catch different things"
+                )
+                selected_persona = persona_options[selected_persona_name]
+                
+                # Show persona description
+                st.caption(EVALUATOR_PERSONAS[selected_persona]["description"])
+                
+                # Option 2: Analysis Rigor
+                rigor_options = {v["name"]: k for k, v in RIGOR_LEVELS.items()}
+                selected_rigor_name = st.select_slider(
+                    "Analysis rigor:",
+                    options=list(rigor_options.keys()),
+                    value="⚖️ Balanced",
+                    key=f"rigor_{candidate_num}",
+                    help="How critical should the analysis be?"
+                )
+                selected_rigor = rigor_options[selected_rigor_name]
             
-            # Show persona description
-            st.caption(EVALUATOR_PERSONAS[selected_persona]["description"])
-            
-            # Option 2: Analysis Rigor
-            rigor_options = {v["name"]: k for k, v in RIGOR_LEVELS.items()}
-            selected_rigor_name = st.select_slider(
-                "Analysis rigor:",
-                options=list(rigor_options.keys()),
-                value="⚖️ Balanced",
-                key=f"rigor_{candidate_num}",
-                help="How critical should the analysis be?"
-            )
-            selected_rigor = rigor_options[selected_rigor_name]
-            
-            # Option 3: Key Concerns
+            # Option 3: Key Concerns (always editable - can be different per candidate)
             key_concerns = st.text_area(
                 "Specific concerns to address (optional):",
                 placeholder="e.g., 'Worried about startup adaptability' or 'Need someone who can work autonomously'",
@@ -2073,27 +2268,42 @@ with tab_evaluate:
             elif not focus_areas:
                 st.warning("Select at least one focus area")
             else:
-                st.session_state.working_on = f"Evaluating {candidate_name} as {selected_persona_name}..."
-                result, _ = evaluate_candidate(
-                    candidate_name, 
-                    cv_text, 
-                    jd_text, 
-                    transcript, 
-                    focus_areas,
-                    persona=selected_persona,
-                    rigor=selected_rigor,
-                    key_concerns=key_concerns
-                )
-                st.session_state.working_on = None
+                # Show immediate spinner feedback
+                with st.spinner(f"🔄 Analyzing {candidate_name}... This takes 15-30 seconds."):
+                    st.session_state.working_on = f"Evaluating {candidate_name} as {selected_persona_name}..."
+                    result, _ = evaluate_candidate(
+                        candidate_name, 
+                        cv_text, 
+                        jd_text, 
+                        transcript, 
+                        focus_areas,
+                        persona=selected_persona,
+                        rigor=selected_rigor,
+                        key_concerns=key_concerns
+                    )
+                    st.session_state.working_on = None
                 
                 if not str(result).startswith("Error"):
                     try:
                         m = re.search(r'```json\s*(.*?)\s*```', result, re.DOTALL)
                         parsed = json.loads(m.group(1) if m else result)
                         parsed['candidate_name'] = candidate_name
+                        # Store key concerns in the result for display
+                        parsed['key_concerns_input'] = key_concerns
                         st.session_state.candidates.append(parsed)
                         st.session_state.current_candidate = parsed
                         st.session_state.current_step = 'results'
+                        
+                        # Lock settings after first candidate for fair comparison
+                        if st.session_state.locked_settings is None:
+                            st.session_state.locked_settings = {
+                                'persona': selected_persona,
+                                'persona_name': selected_persona_name,
+                                'rigor': selected_rigor,
+                                'rigor_name': selected_rigor_name,
+                                'focus_areas': focus_areas
+                            }
+                        
                         st.rerun()
                     except Exception as e:
                         st.error(f"Parse error: {e}")
@@ -2162,6 +2372,43 @@ with tab_questions:
         elif q_cv_src == "📝 Paste":
             q_cv_text = st.text_area("Paste CV:", height=100, key="q_cv_paste")
         st.markdown('</div>', unsafe_allow_html=True)
+        
+        # New: Question Style and Difficulty Settings
+        st.markdown('<div class="input-card">', unsafe_allow_html=True)
+        st.markdown("**⚙️ Question Settings**")
+        
+        # Question Style
+        style_options = {v["name"]: k for k, v in QUESTION_STYLES.items()}
+        selected_style_name = st.selectbox(
+            "Question Style:",
+            options=list(style_options.keys()),
+            index=0,
+            key="q_style",
+            help="Adjust the focus and tone of questions"
+        )
+        selected_style = style_options[selected_style_name]
+        st.caption(QUESTION_STYLES[selected_style]["description"])
+        
+        # Difficulty Level
+        difficulty_options = {v["name"]: k for k, v in DIFFICULTY_LEVELS.items()}
+        selected_difficulty_name = st.select_slider(
+            "Difficulty Level:",
+            options=list(difficulty_options.keys()),
+            value="⚖️ Mid-Level",
+            key="q_difficulty"
+        )
+        selected_difficulty = difficulty_options[selected_difficulty_name]
+        
+        # Company Context
+        company_context = st.text_area(
+            "Company/Team Context (optional):",
+            placeholder="e.g., 'Fast-paced startup, remote-first, need someone autonomous'",
+            height=68,
+            key="q_company_context",
+            help="Questions will probe for fit with your specific environment"
+        )
+        
+        st.markdown('</div>', unsafe_allow_html=True)
     
     st.markdown("---")
     
@@ -2173,8 +2420,13 @@ with tab_questions:
         elif not q_focus:
             st.warning("Select focus areas")
         else:
-            st.session_state.working_on = "Generating questions..."
-            result, _ = generate_questions(job_title, requirements, stage, duration, q_focus, q_cv_text, exclude_illegal)
+            st.session_state.working_on = f"Generating {selected_style_name} questions..."
+            result, _ = generate_questions(
+                job_title, requirements, stage, duration, q_focus, q_cv_text, exclude_illegal,
+                style=selected_style,
+                difficulty=selected_difficulty,
+                company_context=company_context
+            )
             st.session_state.working_on = None
             st.session_state.questions_result = result
     
@@ -2188,6 +2440,16 @@ with tab_questions:
                 
                 st.markdown("---")
                 st.markdown("### Interview Guide")
+                
+                # Show settings used
+                settings = data.get('settings', {})
+                if settings:
+                    st.markdown(f"""
+                    <div style="display:flex;gap:8px;margin-bottom:16px;">
+                        <span style="background:rgba(99,102,241,0.2);color:#a5b4fc;padding:4px 10px;border-radius:12px;font-size:11px;">{settings.get('style', '')}</span>
+                        <span style="background:rgba(139,92,246,0.2);color:#c4b5fd;padding:4px 10px;border-radius:12px;font-size:11px;">{settings.get('difficulty', '')}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
                 
                 # Opening
                 opening = data.get('opening', {})
@@ -2244,6 +2506,113 @@ with tab_questions:
             except Exception as e:
                 st.error(f"Parse error: {e}")
                 st.text(result)
+        else:
+            st.error(result)
+
+# ============================================
+# TAB 3: RECRUITER COACH
+# ============================================
+with tab_coach:
+    st.markdown("### 🎓 Recruiter Coach")
+    st.markdown("Get expert guidance on interviewing, hiring, and candidate assessment.")
+    
+    # Quick topic buttons
+    st.markdown("**Quick Topics:**")
+    topic_cols = st.columns(4)
+    
+    quick_topics = [
+        ("🎯 STAR Method", "How do I use the STAR method effectively to evaluate behavioral answers?"),
+        ("🚩 Red Flags", "What are the most common interview red flags I should watch for?"),
+        ("💬 Tough Questions", "How do I ask difficult questions without making candidates uncomfortable?"),
+        ("⚖️ Bias Reduction", "How can I reduce unconscious bias in my interviews?"),
+        ("📊 Scoring", "What's the best way to score and compare candidates objectively?"),
+        ("🤝 Rapport", "How do I build rapport quickly at the start of an interview?"),
+        ("❌ Rejections", "How do I give constructive rejection feedback?"),
+        ("🎭 Nervous Candidates", "How do I help nervous candidates perform their best?")
+    ]
+    
+    # Initialize coach topic in session state
+    if 'coach_topic' not in st.session_state:
+        st.session_state.coach_topic = ""
+    
+    for i, (label, topic) in enumerate(quick_topics):
+        col_idx = i % 4
+        with topic_cols[col_idx]:
+            if st.button(label, key=f"quick_{i}", use_container_width=True):
+                st.session_state.coach_topic = topic
+    
+    st.markdown("---")
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        st.markdown('<div class="input-card">', unsafe_allow_html=True)
+        st.markdown("**Ask Your Question**")
+        
+        coach_question = st.text_area(
+            "What do you need help with?",
+            value=st.session_state.coach_topic,
+            height=100,
+            placeholder="e.g., 'How do I assess culture fit without asking illegal questions?' or 'What should I do when a candidate gives vague answers?'",
+            key="coach_question_input"
+        )
+        
+        coach_context = st.text_area(
+            "Additional context (optional):",
+            height=80,
+            placeholder="e.g., 'I'm hiring for a senior engineering role at a startup' or 'The candidate seemed nervous'",
+            key="coach_context"
+        )
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown('<div class="input-card">', unsafe_allow_html=True)
+        st.markdown("**Your Experience Level**")
+        experience = st.radio(
+            "I am a:",
+            ["🌱 New to interviewing", "⚖️ Some experience", "🔥 Experienced interviewer"],
+            key="coach_experience",
+            help="Advice will be calibrated to your level"
+        )
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    if st.button("🎓 Get Coaching", type="primary", use_container_width=True):
+        if not coach_question or len(coach_question.strip()) < 10:
+            st.warning("Please ask a question (at least 10 characters)")
+        else:
+            exp_map = {
+                "🌱 New to interviewing": "beginner",
+                "⚖️ Some experience": "intermediate", 
+                "🔥 Experienced interviewer": "advanced"
+            }
+            st.session_state.working_on = "Getting coaching advice..."
+            result, _ = get_recruiter_coaching(
+                coach_question,
+                context=coach_context,
+                experience_level=exp_map.get(experience, "intermediate")
+            )
+            st.session_state.working_on = None
+            st.session_state.coach_result = result
+    
+    if st.session_state.get('coach_result'):
+        result = st.session_state.coach_result
+        
+        if not str(result).startswith("Error"):
+            st.markdown("---")
+            st.markdown("### 💡 Coaching Advice")
+            st.markdown(f"""
+            <div style="background:linear-gradient(135deg,rgba(99,102,241,0.1),rgba(139,92,246,0.1));border-radius:16px;padding:24px;border-left:4px solid #6366f1;">
+                {result.replace(chr(10), '<br>')}
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Clear button
+            if st.button("🔄 Ask Another Question", use_container_width=True):
+                st.session_state.coach_result = None
+                st.session_state.coach_topic = ""
+                st.rerun()
         else:
             st.error(result)
 
