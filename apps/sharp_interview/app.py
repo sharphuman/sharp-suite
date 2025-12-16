@@ -395,7 +395,7 @@ def init_session():
             st.session_state[k] = v
 
 def check_url_auth():
-    token = st.query_params.get("auth")
+    token = st.query_params.get("token") or st.query_params.get("auth")
     if token and not st.session_state.authenticated:
         user_info = validate_session_token(token)
         if user_info:
@@ -415,7 +415,7 @@ def get_user_email():
 def build_app_url(app_name):
     base = APP_URLS.get(app_name, "")
     token = st.session_state.get("session_token", "")
-    return f"{base}?auth={token}" if base and token else base
+    return f"{base}?token={token}" if base and token else base
 
 # ============================================
 # FILE EXTRACTION (ROBUST)
