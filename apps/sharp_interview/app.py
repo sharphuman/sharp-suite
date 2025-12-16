@@ -382,7 +382,7 @@ def get_user_email():
 def build_app_url(app_name):
     base = APP_URLS.get(app_name, "")
     token = st.session_state.get("session_token", "")
-    return f"{base}?auth={token}" if base and token else base
+    return f"{base}?token={token}" if base and token else base
 
 # ============================================
 # FILE EXTRACTION (ROBUST)
