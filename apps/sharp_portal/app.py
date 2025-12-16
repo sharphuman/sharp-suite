@@ -19,6 +19,7 @@ try:
     )
     from shared_ui import (
         apply_global_styles,
+        render_top_banner,
         render_sidebar,
         inject_ga4,
         COLORS
@@ -40,6 +41,7 @@ except ImportError:
         "sales": "https://sales.sharphuman.com",
         "admin": "https://admin.sharphuman.com",
     }
+    COLORS = {"bg_dark": "#1a1a1a", "pink": "#db2777", "text_primary": "#ffffff", "text_muted": "#9ca3af", "border": "rgba(255,255,255,0.1)"}
 
 # App info with rich descriptions
 APPS = [
@@ -50,8 +52,7 @@ APPS = [
         "tagline": "Job descriptions that attract top talent",
         "description": """Turn a quick brief into a polished, bias-free job description in under 60 seconds. 
         Just tell us the role, seniority, and a few must-haves. Our AI crafts compelling copy that attracts 
-        the right candidates while keeping your compliance team happy. No more staring at blank pages or 
-        recycling the same tired templates from three years ago."""
+        the right candidates while keeping your compliance team happy."""
     },
     {
         "key": "screen",
@@ -60,8 +61,7 @@ APPS = [
         "tagline": "From hundreds of CVs to a shortlist you trust",
         "description": """Upload a stack of CVs and let AI do the heavy lifting. We score and rank every 
         candidate against your job requirements, flag potential concerns, and highlight the hidden gems 
-        you might have missed. Get through a hundred applications in the time it used to take you to 
-        review ten. Spend your energy talking to great candidates, not drowning in paperwork."""
+        you might have missed."""
     },
     {
         "key": "interview",
@@ -70,8 +70,7 @@ APPS = [
         "tagline": "Prep, evaluate, and coach with confidence",
         "description": """Walk into every interview feeling prepared. Generate role-specific questions, 
         evaluate candidates consistently with structured scorecards, and get AI-powered summaries after 
-        each conversation. Whether you're screening a graduate or closing a VP, we've got your back. 
-        Also includes coaching tools for your recruiter calls, from client intakes to candidate screens."""
+        each conversation."""
     },
     {
         "key": "outreach",
@@ -80,8 +79,7 @@ APPS = [
         "tagline": "Find candidates and start real conversations",
         "description": """Your complete sourcing and engagement toolkit. Build Boolean search strings 
         that actually work, craft personalized InMails that get replies, and create multi-touch sequences 
-        that nurture passive candidates over time. Stop sending generic messages into the void. Start 
-        conversations that turn into placements."""
+        that nurture passive candidates over time."""
     },
     {
         "key": "content",
@@ -89,19 +87,15 @@ APPS = [
         "title": "Content",
         "tagline": "Build your employer brand without the writer's block",
         "description": """Generate LinkedIn posts, career page copy, job ads, recruitment marketing emails, 
-        and thought leadership content. All in your company's voice, all without staring at a blank screen 
-        for an hour. Keep your talent pipeline warm with content that actually resonates with the candidates 
-        you want to attract."""
+        and thought leadership content. All in your company's voice, all without staring at a blank screen."""
     },
     {
         "key": "sales",
         "icon": "💰",
         "title": "Sales",
         "tagline": "Sharpen your BD and client skills",
-        "description": """Upload your client calls or candidate screens and get honest, actionable feedback 
-        on what worked and what could be better. Our AI coaches you through objection handling, fee 
-        negotiations, and closing techniques. Includes a follow-up email generator so you never lose 
-        momentum after a great call. Works for agency recruiters and general sales teams alike."""
+        "description": """Analyze your sales calls with AI coaching. Get feedback on your pitch, objection 
+        handling, and closing techniques. Works for both general sales and recruiting business development."""
     },
 ]
 
@@ -121,8 +115,7 @@ def supabase_sign_in(email, password):
         data = r.json()
         if r.status_code == 200 and data.get("access_token"):
             user = data.get("user", {})
-            session_token = create_session(user.get("id"), email)
-            return {"success": True, "user": user, "session_token": session_token}
+            return {"success": True, "user": user, "session_token": create_session(user.get("id"), email)}
         return {"success": False, "message": data.get("error_description") or "Invalid credentials"}
     except Exception as e:
         return {"success": False, "message": str(e)}
@@ -139,7 +132,7 @@ def supabase_sign_up(email, password):
         data = r.json()
         if r.status_code == 200 and data.get("user"):
             return {"success": True, "message": "Check your email to confirm your account!"}
-        return {"success": False, "message": data.get("error_description") or "Failed"}
+        return {"success": False, "message": data.get("error_description") or "Signup failed"}
     except Exception as e:
         return {"success": False, "message": str(e)}
 
@@ -152,7 +145,9 @@ def supabase_magic_link(email):
             json={"email": email},
             timeout=10
         )
-        return {"success": r.status_code == 200, "message": "Magic link sent! Check your inbox." if r.status_code == 200 else "Failed to send"}
+        if r.status_code == 200:
+            return {"success": True, "message": "Magic link sent! Check your email."}
+        return {"success": False, "message": "Failed to send magic link"}
     except Exception as e:
         return {"success": False, "message": str(e)}
 
@@ -343,50 +338,10 @@ def render_auth():
                         st.error(r["message"])
 
 
-def render_portal_sidebar():
-    with st.sidebar:
-        st.markdown(f"""
-        <div style='padding:16px;background:rgba(99,102,241,0.15);border-radius:12px;margin-bottom:20px;backdrop-filter:blur(10px);'>
-            <p style='color:#9ca3af;margin:0;font-size:13px;'>Logged in as</p>
-            <p style='color:white;margin:4px 0;font-weight:600;font-size:15px;'>{get_user_email()}</p>
-            <p style='color:#6366f1;margin:0;font-size:12px;text-transform:uppercase;font-weight:600;'>{st.session_state.get('user_plan', 'free')} plan</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        st.markdown("**Apps**")
-        
-        # Current app indicator
-        st.markdown("""<div style='background:linear-gradient(135deg,#6366f1,#8b5cf6);padding:12px 16px;border-radius:8px;text-align:center;margin:4px 0;color:white;font-weight:600;font-size:15px;'>🏠 Portal ◀</div>""", unsafe_allow_html=True)
-        
-        # App links
-        sidebar_apps = [
-            ("jd", "📝 JD Writer"),
-            ("screen", "🔍 CV Screener"),
-            ("interview", "🎯 Interview"),
-            ("outreach", "🚀 Outreach"),
-            ("content", "✍️ Content"),
-            ("sales", "💰 Sales"),
-        ]
-        
-        for app_key, label in sidebar_apps:
-            st.link_button(label, build_app_url(app_key), use_container_width=True)
-        
-        if st.session_state.get("is_god") or st.session_state.get("user_plan") == "god":
-            st.markdown("---")
-            st.link_button("⚙️ Admin", build_app_url("admin"), use_container_width=True)
-        
-        st.markdown("---")
-        
-        if st.button("🚪 Logout", use_container_width=True):
-            for k in list(st.session_state.keys()):
-                del st.session_state[k]
-            st.rerun()
-
-
 def render_dashboard():
-    # Get token for URL building
     token = st.session_state.get("session_token", "")
     
+    # Apply styles - REDUCED tile sizes by ~25%
     st.markdown("""<style>
     @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap');
     *, *::before, *::after { font-family: 'Nunito', sans-serif !important; }
@@ -401,7 +356,7 @@ def render_dashboard():
     }
     
     [data-testid="stHeader"] { background: transparent !important; }
-    section[data-testid="stSidebar"] { background: rgba(26, 26, 26, 0.95) !important; border-right: 1px solid rgba(99,102,241,0.2); backdrop-filter: blur(10px); }
+    section[data-testid="stSidebar"] { background: rgba(26, 26, 26, 0.95) !important; border-right: 1px solid rgba(219, 39, 119, 0.3); backdrop-filter: blur(10px); }
     section[data-testid="stSidebar"] > div { background: transparent !important; }
     section[data-testid="stSidebar"] * { color: #e5e5e5 !important; }
     
@@ -412,57 +367,36 @@ def render_dashboard():
         background: rgba(0, 0, 0, 0.5);
         backdrop-filter: blur(10px);
         border: 1px solid rgba(59, 130, 246, 0.3);
-        border-radius: 16px;
-        padding: 20px;
+        border-radius: 12px;
+        padding: 16px;
         height: 100%;
         transition: all 0.3s ease;
     }
     .app-tile:hover {
         border-color: rgba(59, 130, 246, 0.8);
-        transform: translateY(-4px);
-        box-shadow: 0 15px 30px rgba(59, 130, 246, 0.2);
+        transform: translateY(-2px);
+        box-shadow: 0 10px 20px rgba(59, 130, 246, 0.2);
     }
     
-    .app-icon {
-        font-size: 2.2rem;
-        margin-bottom: 12px;
-    }
-    
-    .app-title {
-        font-size: 1.3rem;
-        font-weight: 700;
-        color: white !important;
-        margin: 0 0 4px 0;
-    }
-    
-    .app-tagline {
-        font-size: 0.95rem;
-        color: #60a5fa !important;
-        margin: 0 0 12px 0;
-        font-weight: 500;
-    }
-    
-    .app-desc {
-        font-size: 0.9rem;
-        color: #b8b8b8 !important;
-        line-height: 1.6;
-        margin: 0 0 16px 0;
-    }
+    .app-icon { font-size: 1.6rem; margin-bottom: 8px; }
+    .app-title { font-size: 1.1rem; font-weight: 700; color: white !important; margin: 0 0 4px 0; }
+    .app-tagline { font-size: 0.85rem; color: #60a5fa !important; margin: 0 0 10px 0; font-weight: 500; }
+    .app-desc { font-size: 0.8rem; color: #b8b8b8 !important; line-height: 1.5; margin: 0 0 12px 0; }
     
     .app-button {
         display: inline-block;
         background: linear-gradient(135deg, #6366f1, #8b5cf6);
         color: white !important;
-        padding: 10px 22px;
-        border-radius: 8px;
+        padding: 8px 18px;
+        border-radius: 6px;
         font-weight: 600;
-        font-size: 0.9rem;
+        font-size: 0.85rem;
         text-decoration: none;
         transition: all 0.2s ease;
     }
     .app-button:hover {
         transform: scale(1.05);
-        box-shadow: 0 6px 20px rgba(99,102,241,0.4);
+        box-shadow: 0 4px 15px rgba(99,102,241,0.4);
         color: white !important;
         text-decoration: none;
     }
@@ -471,9 +405,9 @@ def render_dashboard():
         background: rgba(0, 0, 0, 0.5);
         backdrop-filter: blur(10px);
         border: 1px solid rgba(59, 130, 246, 0.3);
-        border-radius: 16px;
-        padding: 28px;
-        margin-bottom: 28px;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 20px;
     }
     
     .stLinkButton > a {
@@ -485,13 +419,17 @@ def render_dashboard():
     }
     </style>""", unsafe_allow_html=True)
     
+    # Use shared_ui top banner if available
+    if USING_SHARED:
+        render_top_banner()
+    
     # Header
     st.markdown("""
-    <div style="display:flex;align-items:center;gap:16px;padding:20px 0;border-bottom:1px solid rgba(59,130,246,0.3);margin-bottom:28px;">
-        <img src="https://sharphuman.com/logo1-3.png" style="width:50px;">
+    <div style="display:flex;align-items:center;gap:14px;padding:16px 0;border-bottom:1px solid rgba(59,130,246,0.3);margin-bottom:20px;">
+        <img src="https://sharphuman.com/logo1-3.png" style="width:45px;">
         <div>
-            <h1 style="margin:0;font-size:1.8rem;">Sharp Suite</h1>
-            <p style="color:#9ca3af;margin:0;font-size:1rem;">Your AI Recruiting Toolkit</p>
+            <h1 style="margin:0;font-size:1.5rem;">Sharp Suite</h1>
+            <p style="color:#9ca3af;margin:0;font-size:0.9rem;">Your AI Recruiting Toolkit</p>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -500,8 +438,8 @@ def render_dashboard():
     user_name = get_user_email().split('@')[0].title() if '@' in get_user_email() else get_user_email()
     st.markdown(f"""
     <div class="welcome-section">
-        <h2 style="margin:0 0 12px 0;font-size:1.4rem;">👋 Welcome back, {user_name}!</h2>
-        <p style="color:#c4c4c4;margin:0;font-size:1rem;line-height:1.7;">
+        <h2 style="margin:0 0 10px;font-size:1.3rem;">👋 Welcome back, {user_name}!</h2>
+        <p style="margin:0;font-size:0.9rem;line-height:1.5;">
             Sharp Suite is your AI-powered recruiting command center. Whether you're writing job descriptions, 
             screening candidates, prepping for interviews, or crafting outreach that actually gets replies, 
             we've got the tools to help you work smarter. Pick an app below to get started.
@@ -509,51 +447,63 @@ def render_dashboard():
     </div>
     """, unsafe_allow_html=True)
     
-    # App tiles in 2-column grid
-    for i in range(0, len(APPS), 2):
-        cols = st.columns(2)
-        for j, col in enumerate(cols):
-            if i + j < len(APPS):
-                app = APPS[i + j]
-                app_key = app['key']
-                base_url = APP_URLS.get(app_key, f"https://{app_key}.sharphuman.com")
-                app_url = f"{base_url}?token={token}" if token else base_url
+    # App tiles - 3 columns
+    for row_start in range(0, len(APPS), 3):
+        cols = st.columns(3)
+        for i, col in enumerate(cols):
+            app_idx = row_start + i
+            if app_idx < len(APPS):
+                app = APPS[app_idx]
+                url = build_app_url(app["key"])
                 with col:
                     st.markdown(f"""
                     <div class="app-tile">
-                        <div class="app-icon">{app['icon']}</div>
-                        <div class="app-title">{app['title']}</div>
-                        <div class="app-tagline">{app['tagline']}</div>
-                        <div class="app-desc">{app['description']}</div>
-                        <a href="{app_url}" class="app-button">Open {app['title']} →</a>
+                        <div class="app-icon">{app["icon"]}</div>
+                        <h3 class="app-title">{app["title"]}</h3>
+                        <p class="app-tagline">{app["tagline"]}</p>
+                        <p class="app-desc">{app["description"]}</p>
+                        <a href="{url}" class="app-button">Open {app["title"]} →</a>
                     </div>
                     """, unsafe_allow_html=True)
-                    st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
 
 
 # ============================================
 # MAIN
 # ============================================
 
-st.set_page_config(page_title="Sharp Suite", page_icon="🚀", layout="wide")
-init_session()
-check_url_auth()
+st.set_page_config(page_title="Sharp Suite", page_icon="🏠", layout="wide", initial_sidebar_state="expanded")
 
-# Inject GA4 tracking
+# GA4
 if USING_SHARED:
     inject_ga4()
+
+init_session()
+check_url_auth()
 
 if not st.session_state.authenticated:
     render_auth()
 else:
-    # Use shared sidebar if available, otherwise fall back to local
+    # Use shared_ui sidebar
     if USING_SHARED:
         render_sidebar(
             current_app="portal",
             user_email=get_user_email(),
-            user_plan=st.session_state.get('user_plan', 'free'),
-            session_token=st.session_state.get('session_token', '')
+            user_plan=st.session_state.get("user_plan", "free"),
+            session_token=st.session_state.get("session_token", "")
         )
     else:
-        render_portal_sidebar()
+        # Fallback sidebar
+        with st.sidebar:
+            st.markdown(f"**Logged in as:** {get_user_email()}")
+            st.markdown(f"**Plan:** {st.session_state.get('user_plan', 'free')}")
+            st.markdown("---")
+            st.markdown("**Apps**")
+            for app in APPS:
+                st.link_button(f"{app['icon']} {app['title']}", build_app_url(app["key"]), use_container_width=True)
+            st.markdown("---")
+            if st.button("🚪 Logout", use_container_width=True):
+                for k in list(st.session_state.keys()):
+                    del st.session_state[k]
+                st.rerun()
+    
     render_dashboard()
