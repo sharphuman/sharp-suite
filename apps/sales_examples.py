@@ -1,5 +1,5 @@
 """
-Few-Shot Examples for Sharp Sales Call Analyzer
+Few-Shot Examples for Sharp Sales Call TAnalyzer
 
 These examples teach the AI what high-quality analysis looks like.
 Based on human-reviewed sales calls with detailed coaching feedback.
