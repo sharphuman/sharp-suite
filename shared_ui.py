@@ -29,11 +29,9 @@ except ImportError:
         "jd": "https://jd.sharphuman.com",
         "screen": "https://screen.sharphuman.com",
         "interview": "https://interview.sharphuman.com",
-        "source": "https://source.sharphuman.com",
+        "outreach": "https://outreach.sharphuman.com",
         "content": "https://content.sharphuman.com",
         "sales": "https://sales.sharphuman.com",
-        "reach": "https://reach.sharphuman.com",
-        "assistant": "https://assistant.sharphuman.com",
         "admin": "https://admin.sharphuman.com",
     }
     GOD_PASSWORD = "G0DHum@n101!!!"
@@ -718,11 +716,9 @@ APP_LABELS = [
     ("jd", "📝", "JD Writer"),
     ("screen", "🔍", "CV Screener"),
     ("interview", "🎯", "Interview"),
-    ("source", "🎣", "Sourcing"),
+    ("outreach", "🚀", "Outreach"),
     ("content", "✍️", "Content"),
     ("sales", "💰", "Sales"),
-    ("reach", "🚀", "Reach"),
-    ("assistant", "🤖", "Assistant"),
 ]
 
 def render_sidebar(
