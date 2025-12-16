@@ -1,4 +1,4 @@
-"""Sharp Sales - AI Sales Call Analysis (Enhanced)"""
+"""Sharp Sales - AI Sales Call Analysis (Enhanced v2)"""
 import streamlit as st
 import os
 import requests
@@ -50,7 +50,7 @@ except ImportError:
         return ""
 
 # ============================================
-# COACH PERSONAS (Option 1)
+# COACH PERSONAS
 # ============================================
 COACH_PERSONAS = {
     "supportive": {
@@ -81,7 +81,7 @@ COACH_PERSONAS = {
 }
 
 # ============================================
-# RIGOR LEVELS (Option 2)
+# RIGOR LEVELS
 # ============================================
 RIGOR_LEVELS = {
     "coaching": {
@@ -102,7 +102,7 @@ RIGOR_LEVELS = {
 }
 
 # ============================================
-# FEEDBACK REASONS (Option 5)
+# FEEDBACK REASONS
 # ============================================
 FEEDBACK_REASONS = {
     "thumbs_down": [
@@ -123,40 +123,72 @@ FEEDBACK_REASONS = {
     ]
 }
 
+# ============================================
+# CALL FRAMEWORKS - Added Interview Call
+# ============================================
 CALL_FRAMEWORKS = {
-    "discovery": {"name": "Discovery Call", "stages": {
+    "discovery": {"name": "🔍 Discovery Call", "stages": {
         "opening": {"name": "Opening", "weight": 15, "skills": ["Rapport Building", "Setting the Frame", "Permission to Proceed"]},
         "discovery": {"name": "Discovery", "weight": 40, "skills": ["Uncovering Pain & Goals", "Probing Questions", "Cost of Inaction", "Timeline & Urgency", "Budget Discovery"]},
         "qualify": {"name": "Qualification", "weight": 20, "skills": ["Decision Authority", "Buying Process", "Competitive Landscape"]},
         "close": {"name": "Close", "weight": 25, "skills": ["Summary & Recap", "Clear Next Steps", "Getting Commitment", "Multi-threading"]}
     }},
-    "demo": {"name": "Demo/Presentation", "stages": {
+    "interview_call": {"name": "🎯 Interview Call (Cold Outreach)", "stages": {
+        "hook": {"name": "Hook & Permission", "weight": 20, "skills": ["Pattern Interrupt", "Value-First Hook", "Permission to Continue", "Credibility Statement"]},
+        "interview": {"name": "Interview/Research Phase", "weight": 35, "skills": ["Industry Questions", "Challenge Discovery", "Active Listening", "Building Curiosity", "Seeding Pain"]},
+        "transition": {"name": "Transition to Discovery", "weight": 25, "skills": ["Bridge Statement", "Value Teaser", "Creating Urgency", "Permission to Go Deeper"]},
+        "close": {"name": "Close to Meeting", "weight": 20, "skills": ["Direct Ask", "Handling Brush-offs", "Calendar Commitment", "Confirming Next Steps"]}
+    }},
+    "demo": {"name": "🖥️ Demo/Presentation", "stages": {
         "setup": {"name": "Setup", "weight": 15, "skills": ["Discovery Recap", "Demo Agenda", "Attendee Check"]},
         "demo": {"name": "Demonstration", "weight": 40, "skills": ["Tailored Demo", "Storytelling", "Audience Engagement", "Objection Handling"]},
         "value": {"name": "Value", "weight": 20, "skills": ["ROI Discussion", "Differentiation", "Social Proof"]},
         "close": {"name": "Close", "weight": 25, "skills": ["Temperature Check", "Surfacing Concerns", "Next Steps"]}
     }},
-    "proposal": {"name": "Proposal Call", "stages": {
+    "proposal": {"name": "📋 Proposal Call", "stages": {
         "review": {"name": "Proposal Review", "weight": 30, "skills": ["Proposal Walkthrough", "Pricing Presentation", "Value Justification", "Addressing Questions"]},
         "concerns": {"name": "Concerns", "weight": 35, "skills": ["Objection Handling", "Risk Mitigation", "Competitor Comparison", "Stakeholder Concerns"]},
         "close": {"name": "Close", "weight": 35, "skills": ["Decision Timeline", "Next Steps", "Verbal Commitment", "Contract Process"]}
     }},
-    "negotiation": {"name": "Negotiation Call", "stages": {
+    "negotiation": {"name": "🤝 Negotiation Call", "stages": {
         "review": {"name": "Review", "weight": 20, "skills": ["Proposal Recap", "Value Reinforcement"]},
         "negotiate": {"name": "Negotiation", "weight": 50, "skills": ["Listening to Concerns", "Trading Value", "Anchoring", "Creative Solutions"]},
         "close": {"name": "Close", "weight": 30, "skills": ["Asking for Close", "Final Objections", "Paperwork Process"]}
     }},
-    "interview": {"name": "Customer Interview", "stages": {
+    "customer_interview": {"name": "📞 Customer Interview", "stages": {
         "intro": {"name": "Introduction", "weight": 15, "skills": ["Rapport Building", "Setting Context", "Permission & Recording"]},
         "discovery": {"name": "Discovery", "weight": 50, "skills": ["Open-Ended Questions", "Active Listening", "Follow-up Probes", "Capturing Insights", "Pain Point Exploration"]},
         "close": {"name": "Wrap-Up", "weight": 35, "skills": ["Summary of Key Points", "Additional Questions", "Next Steps", "Thank You & Follow-up"]}
     }},
-    "follow_up": {"name": "Follow-Up Call", "stages": {
+    "follow_up": {"name": "🔄 Follow-Up Call", "stages": {
         "reconnect": {"name": "Reconnect", "weight": 25, "skills": ["Context Reset", "Situation Changes", "Value Reminder"]},
         "advance": {"name": "Advance", "weight": 50, "skills": ["Address Objections", "New Information", "Creating Urgency"]},
         "commit": {"name": "Commitment", "weight": 25, "skills": ["Micro-Commitment", "Book Next Meeting", "Action Items"]}
     }}
 }
+
+# ============================================
+# EMAIL TONE OPTIONS
+# ============================================
+EMAIL_TONES = {
+    "friendly": {
+        "name": "😊 Friendly",
+        "description": "Warm, personable, relationship-focused",
+        "prompt": "Write in a warm, friendly tone. Focus on building relationship. Use casual but professional language."
+    },
+    "professional": {
+        "name": "💼 Professional",
+        "description": "Balanced, business-appropriate",
+        "prompt": "Write in a professional, balanced tone. Direct but courteous. Standard business communication."
+    },
+    "assertive": {
+        "name": "🎯 Assertive",
+        "description": "Direct, confident, action-oriented",
+        "prompt": "Write in an assertive, confident tone. Be direct about value and next steps. Create urgency without being pushy."
+    }
+}
+
+TRIAL_LIMITS = {"sales": 5}
 
 
 def create_session(user_id, email):
@@ -164,6 +196,7 @@ def create_session(user_id, email):
     try: requests.post(f"{SUPABASE_URL}/rest/v1/sessions", headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}", "Content-Type": "application/json", "Prefer": "return=minimal"}, json={"user_id": user_id, "token": token, "ip_address": "unknown", "device_hash": "sales", "is_active": True, "expires_at": (datetime.utcnow() + timedelta(hours=24)).isoformat()}, timeout=10)
     except: pass
     return token
+
 
 def supabase_sign_in(email, password):
     try:
@@ -175,12 +208,14 @@ def supabase_sign_in(email, password):
         return {"success": False, "message": data.get("error_description") or "Invalid"}
     except Exception as e: return {"success": False, "message": str(e)}
 
+
 def supabase_sign_up(email, password):
     try:
         r = requests.post(f"{SUPABASE_URL}/auth/v1/signup", headers={"apikey": SUPABASE_ANON_KEY, "Content-Type": "application/json"}, json={"email": email, "password": password}, timeout=10)
         data = r.json()
         return {"success": True, "message": "Check email!"} if r.status_code == 200 and data.get("user") else {"success": False, "message": data.get("error_description") or "Failed"}
     except Exception as e: return {"success": False, "message": str(e)}
+
 
 def validate_session_token(token):
     if not token: return None
@@ -197,374 +232,159 @@ def validate_session_token(token):
     except: pass
     return None
 
+
 def log_usage(user_id, session_id, app, action, tokens_used=0):
     try: requests.post(f"{SUPABASE_URL}/rest/v1/usage_logs", headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}", "Content-Type": "application/json", "Prefer": "return=minimal"}, json={"user_id": user_id, "session_id": session_id, "app": app, "action": action, "tokens_used": tokens_used}, timeout=5)
     except: pass
 
-def get_user_usage_count(user_id, app, action=None):
-    """Get the number of times a user has used a specific app/action"""
+
+def check_trial_limit(app_name, limit=5):
+    user_id = st.session_state.get("user", {}).get("id")
+    plan = st.session_state.get("user_plan", "free")
+    if plan not in ["trial", "7_day_trial", "7-day-trial", "free_trial"]: return True, 0, limit
+    if not user_id: return True, 0, limit
     try:
-        query = f"{SUPABASE_URL}/rest/v1/usage_logs?user_id=eq.{user_id}&app=eq.{app}"
-        if action:
-            query += f"&action=eq.{action}"
-        query += "&select=id"
-        
-        r = requests.get(
-            query,
-            headers={
-                "apikey": SUPABASE_ANON_KEY,
-                "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}"
-            },
-            timeout=10
-        )
-        if r.status_code == 200:
-            return len(r.json())
-        return 0
-    except:
-        return 0
+        r = requests.get(f"{SUPABASE_URL}/rest/v1/usage_logs?user_id=eq.{user_id}&app=eq.{app_name}&action=eq.analyze", headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}"}, timeout=10)
+        usage = len(r.json()) if r.status_code == 200 else 0
+        return usage < limit, usage, limit
+    except: return True, 0, limit
 
-def check_trial_limit(app, limit=5):
-    """
-    Check if trial user has exceeded their usage limit.
-    Returns (allowed, usage_count, limit)
-    """
-    # Skip check for non-trial users
-    user_plan = st.session_state.get('user_plan', 'free')
-    if user_plan not in ['trial', '7_day_trial', '7-day-trial', 'free_trial']:
-        return True, 0, limit
-    
-    # Skip check for god users
-    if st.session_state.get('is_god'):
-        return True, 0, limit
-    
-    # Get user ID
-    user_id = st.session_state.user.get("id") if st.session_state.user else None
-    if not user_id:
-        return True, 0, limit  # Can't check without user ID
-    
-    # Get usage count
-    usage_count = get_user_usage_count(user_id, app, action="analyze")
-    
-    return usage_count < limit, usage_count, limit
 
-# Trial limits per app
-TRIAL_LIMITS = {
-    "sales": 5,
-    "interview": 5,
-    "screen": 10,
-    "jd": 10,
-    "content": 10,
-}
-
-def submit_feedback(app, feedback_type, message):
+def submit_feedback(app, ft, message):
     try:
-        r = requests.post(f"{SUPABASE_URL}/rest/v1/user_feedback", headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}", "Content-Type": "application/json", "Prefer": "return=minimal"}, json={"user_id": st.session_state.user.get("id") if st.session_state.user else None, "app": app, "feedback_type": feedback_type, "rating": 4, "message": message, "email": get_user_email()}, timeout=10)
-        return r.status_code in [200, 201]
+        requests.post(f"{SUPABASE_URL}/rest/v1/feedback", headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}", "Content-Type": "application/json", "Prefer": "return=minimal"}, json={"app": app, "feedback_type": ft, "message": message, "user_id": st.session_state.get("user", {}).get("id")}, timeout=10)
+        return True
     except: return False
 
-def submit_analysis_feedback(result_data, feedback, reason=None, comment=None):
-    """Submit thumbs up/down feedback for analysis quality"""
+
+def submit_analysis_feedback(analysis_result, feedback_type, reason=None, comment=None):
     try:
-        payload = {
-            "user_id": st.session_state.user.get("id") if st.session_state.user else None,
-            "app": "sales",
-            "persona": result_data.get("persona", "balanced"),
-            "rigor_level": result_data.get("rigor", "balanced"),
-            "overall_score": result_data.get("overall_score", 0),
-            "feedback": feedback,
-            "feedback_reason": reason,
-            "feedback_comment": comment,
-            "created_at": datetime.utcnow().isoformat()
-        }
-        r = requests.post(
-            f"{SUPABASE_URL}/rest/v1/analysis_feedback",
-            headers={
-                "apikey": SUPABASE_ANON_KEY,
-                "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
-                "Content-Type": "application/json",
-                "Prefer": "return=minimal"
-            },
-            json=payload,
-            timeout=10
-        )
-        return r.status_code in [200, 201]
-    except:
-        return False
+        requests.post(f"{SUPABASE_URL}/rest/v1/analysis_feedback", headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}", "Content-Type": "application/json", "Prefer": "return=minimal"}, json={
+            "app": "sales", "feedback_type": feedback_type, "reason": reason, "comment": comment,
+            "analysis_score": analysis_result.get("overall_score"), "user_id": st.session_state.get("user", {}).get("id")
+        }, timeout=10)
+        return True
+    except: return False
+
+
+def get_user_email():
+    user = st.session_state.get("user", {})
+    return user.get("email", "User") if isinstance(user, dict) else "User"
+
+
+def build_app_url(app_key):
+    base = APP_URLS.get(app_key, f"https://{app_key}.sharphuman.com")
+    token = st.session_state.get("session_token", "")
+    return f"{base}?token={token}" if token else base
+
 
 def init_session():
     defaults = [
-        ('authenticated', False), ('user', None), ('is_god', False), 
-        ('session_token', None), ('user_plan', 'free'), ('working_on', None), 
-        ('analysis_result', None), ('feedback_given', False),
-        ('prospect_name', ''), ('company_name', '')
+        ('authenticated', False), ('user', None), ('session_token', ''), ('is_god', False),
+        ('user_plan', 'free'), ('working_on', None), ('analysis_result', None), 
+        ('feedback_given', False), ('show_feedback_reason', False),
+        ('bd_result', None), ('followup_email', None)
     ]
     for k, v in defaults:
-        if k not in st.session_state: 
-            st.session_state[k] = v
+        if k not in st.session_state: st.session_state[k] = v
+
 
 def check_url_auth():
-    token = st.query_params.get("auth")
-    if token and not st.session_state.authenticated:
-        user_info = validate_session_token(token)
-        if user_info:
-            st.session_state.authenticated, st.session_state.user = True, {"email": user_info["email"], "id": user_info["user_id"]}
-            st.session_state.session_token, st.session_state.user_plan = token, user_info.get("plan", "free")
-            st.session_state.is_god = user_info.get("plan") == "god"
-            return True
-    return False
+    if st.session_state.authenticated: return
+    token = st.query_params.get("token")
+    if token:
+        result = validate_session_token(token)
+        if result:
+            st.session_state.authenticated = True
+            st.session_state.user = {"id": result["user_id"], "email": result["email"]}
+            st.session_state.session_token = result["token"]
+            st.session_state.user_plan = result.get("plan", "free")
 
-def get_user_email(): return st.session_state.user.get("email", "User") if st.session_state.user else ("GOD" if st.session_state.is_god else "User")
-def build_app_url(app_name):
-    base, token = APP_URLS.get(app_name, ""), st.session_state.get("session_token", "")
-    return f"{base}?auth={token}" if base and token else base
 
 def extract_text_from_file(uploaded_file):
-    """Extract text from uploaded files with robust handling"""
-    import zipfile
-    from xml.etree import ElementTree
-    
-    def is_readable_text(text):
-        if not text or len(text.strip()) < 10:
-            return False
-        alpha_chars = sum(1 for c in text if c.isalpha())
-        return (alpha_chars / len(text) if len(text) > 0 else 0) > 0.3
-    
-    def clean_text(text):
-        if not text:
-            return ""
-        cleaned = ''.join(c if c.isprintable() or c in '\n\r\t' else ' ' for c in text)
-        cleaned = re.sub(r'[ \t]+', ' ', cleaned)
-        return re.sub(r'\n{3,}', '\n\n', cleaned).strip()
-    
-    file_type = uploaded_file.name.split('.')[-1].lower()
-    content = uploaded_file.read()
-    uploaded_file.seek(0)
-    
-    if file_type == 'txt':
-        return clean_text(content.decode('utf-8', errors='ignore'))
-    
-    elif file_type == 'pdf':
-        extracted_text = ""
+    """Extract text from various file formats."""
+    try:
+        name = uploaded_file.name.lower()
+        content = uploaded_file.read()
         
-        # Try PyMuPDF with multiple methods
-        try:
-            import fitz
-            pdf = fitz.open(stream=content, filetype="pdf")
-            text_parts = []
-            for page in pdf:
-                page_text = page.get_text("text")
-                if not page_text or not page_text.strip():
-                    page_text = page.get_text("text", flags=fitz.TEXT_PRESERVE_WHITESPACE)
-                if not page_text or not page_text.strip():
-                    blocks = page.get_text("blocks")
-                    page_text = "\n".join([b[4] for b in blocks if b[6] == 0])
-                if page_text and page_text.strip():
-                    text_parts.append(page_text)
-            pdf.close()
-            extracted_text = "\n".join(text_parts)
-        except:
-            pass
+        if name.endswith('.txt'):
+            return content.decode('utf-8', errors='ignore')
         
-        if extracted_text and extracted_text.strip():
-            cleaned = clean_text(extracted_text)
-            if is_readable_text(cleaned):
-                return cleaned
+        elif name.endswith('.vtt') or name.endswith('.srt'):
+            text = content.decode('utf-8', errors='ignore')
+            lines = []
+            for line in text.split('\n'):
+                line = line.strip()
+                if not line: continue
+                if '-->' in line: continue
+                if line.isdigit(): continue
+                if line.startswith('WEBVTT'): continue
+                if line.startswith('NOTE'): continue
+                lines.append(re.sub(r'<[^>]+>', '', line))
+            return ' '.join(lines)
         
-        # Try pdfplumber
-        try:
-            import pdfplumber
-            with pdfplumber.open(io.BytesIO(content)) as pdf:
-                text_parts = [page.extract_text() for page in pdf.pages if page.extract_text()]
-                if text_parts:
-                    cleaned = clean_text("\n".join(text_parts))
-                    if is_readable_text(cleaned):
-                        return cleaned
-        except:
-            pass
-        
-        # Last resort
-        try:
-            import fitz
-            pdf = fitz.open(stream=content, filetype="pdf")
-            text_parts = [page.get_text() for page in pdf]
-            pdf.close()
-            result = clean_text("\n".join(text_parts))
-            if len(result) > 50:
-                return result
-        except:
-            pass
-        
-        return "[PDF extraction failed - please paste the transcript directly]"
-    
-    elif file_type in ['docx', 'doc']:
-        # Try python-docx first
-        try:
-            from docx import Document
-            doc = Document(io.BytesIO(content))
-            paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
-            for table in doc.tables:
-                for row in table.rows:
-                    for cell in row.cells:
-                        if cell.text.strip():
-                            paragraphs.append(cell.text.strip())
-            if paragraphs:
-                return clean_text('\n\n'.join(paragraphs))
-        except:
-            pass
-        
-        # Fallback: raw XML from DOCX
-        try:
-            with zipfile.ZipFile(io.BytesIO(content)) as z:
-                xml_content = z.read('word/document.xml')
-                tree = ElementTree.fromstring(xml_content)
-                texts = [elem.text for elem in tree.iter() if elem.text and elem.text.strip()]
-                if texts:
-                    return clean_text(' '.join(texts))
-        except:
-            pass
-        
-        return "[DOCX extraction failed - please paste the transcript directly]"
-    
-    elif file_type in ['vtt', 'srt']:
-        text = content.decode('utf-8', errors='ignore')
-        text = re.sub(r'\d{2}:\d{2}:\d{2}[.,]\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}[.,]\d{3}', '', text)
-        text = re.sub(r'WEBVTT.*?\n', '', text)
-        text = re.sub(r'<[^>]+>', '', text)
-        text = re.sub(r'^\d+$', '', text, flags=re.MULTILINE)
-        lines = [line.strip() for line in text.split('\n') if line.strip()]
-        return '\n'.join(lines)
-    
-    elif file_type in ['mp3', 'm4a', 'wav', 'mp4', 'webm', 'ogg']:
-        openai_key = os.environ.get("OPENAI_API_KEY", "")
-        if openai_key:
+        elif name.endswith('.pdf'):
             try:
-                with tempfile.NamedTemporaryFile(suffix=f".{file_type}", delete=False) as tmp:
-                    tmp.write(content)
-                    tmp_path = tmp.name
-                with open(tmp_path, 'rb') as f:
-                    r = requests.post("https://api.openai.com/v1/audio/transcriptions", headers={"Authorization": f"Bearer {openai_key}"}, files={"file": f}, data={"model": "whisper-1"}, timeout=300)
-                os.unlink(tmp_path)
-                if r.status_code == 200:
-                    return r.json().get("text", "")
-                return f"[Transcription error: {r.status_code}]"
-            except Exception as e:
-                return f"[Transcription error: {e}]"
-        return "[Audio transcription requires OPENAI_API_KEY environment variable]"
-    
-    # Default: try to decode as text
-    return content.decode('utf-8', errors='ignore')
+                import fitz
+                pdf = fitz.open(stream=content, filetype="pdf")
+                return "\n".join([page.get_text() for page in pdf])
+            except: return "[PDF extraction failed - install PyMuPDF]"
+        
+        elif name.endswith(('.docx', '.doc')):
+            try:
+                from docx import Document
+                doc = Document(io.BytesIO(content))
+                return "\n".join([p.text for p in doc.paragraphs])
+            except: return "[DOCX extraction failed - install python-docx]"
+        
+        elif name.endswith(('.mp3', '.wav', '.m4a', '.mp4', '.webm')):
+            return "[Audio/video transcription not yet implemented - paste transcript instead]"
+        
+        return content.decode('utf-8', errors='ignore')
+    except Exception as e:
+        return f"[Error extracting text: {e}]"
 
-def call_claude(prompt, max_tokens=8000, action="sales"):
-    if not ANTHROPIC_API_KEY: return "Error: ANTHROPIC_API_KEY not set", 0
-    try:
-        r = requests.post("https://api.anthropic.com/v1/messages", headers={"x-api-key": ANTHROPIC_API_KEY, "Content-Type": "application/json", "anthropic-version": "2023-06-01"}, json={"model": "claude-sonnet-4-20250514", "max_tokens": max_tokens, "messages": [{"role": "user", "content": prompt}]}, timeout=180)
-        if r.status_code == 200:
-            text = r.json()["content"][0]["text"]
-            if st.session_state.user: log_usage(st.session_state.user.get("id"), st.session_state.get("session_token"), "sales", action, (len(prompt)+len(text))//4)
-            return text, (len(prompt)+len(text))//4
-        return f"Error: {r.status_code}", 0
-    except Exception as e: return f"Error: {e}", 0
 
-def export_to_pdf(data, title="Sales Call Analysis"):
-    """Export analysis to PDF using reportlab"""
+def export_to_pdf(analysis, title="Sales Call Analysis"):
+    """Generate a PDF report from analysis results."""
     try:
+        from reportlab.lib import colors
         from reportlab.lib.pagesizes import letter
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-        from reportlab.lib.units import inch
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
-        from reportlab.lib.colors import HexColor
-        from reportlab.lib.enums import TA_CENTER
         
         buffer = io.BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch)
-        
+        doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=50, bottomMargin=50)
         styles = getSampleStyleSheet()
-        title_style = ParagraphStyle('Title', parent=styles['Title'], fontSize=22, textColor=HexColor('#6366f1'), spaceAfter=16)
-        heading_style = ParagraphStyle('Heading', parent=styles['Heading1'], fontSize=14, textColor=HexColor('#374151'), spaceBefore=16, spaceAfter=8)
-        subhead_style = ParagraphStyle('Subhead', parent=styles['Heading2'], fontSize=12, textColor=HexColor('#6366f1'), spaceBefore=10, spaceAfter=6)
-        body_style = ParagraphStyle('Body', parent=styles['Normal'], fontSize=10, textColor=HexColor('#4b5563'), spaceAfter=6)
-        bullet_style = ParagraphStyle('Bullet', parent=styles['Normal'], fontSize=10, textColor=HexColor('#4b5563'), leftIndent=20, spaceAfter=4)
-        quote_style = ParagraphStyle('Quote', parent=styles['Normal'], fontSize=9, textColor=HexColor('#6366f1'), leftIndent=20, spaceAfter=4, fontName='Helvetica-Oblique')
-        
         story = []
         
         # Title
-        story.append(Paragraph(f"📊 {title}", title_style))
-        story.append(HRFlowable(width="100%", thickness=1, color=HexColor('#e5e7eb')))
-        story.append(Spacer(1, 12))
+        title_style = ParagraphStyle('Title', parent=styles['Heading1'], fontSize=24, spaceAfter=20)
+        story.append(Paragraph(title, title_style))
+        story.append(Paragraph(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}", styles['Normal']))
+        story.append(Spacer(1, 20))
         
-        if isinstance(data, dict):
-            # Overall Score
-            score = data.get('overall_score', 0)
-            rec = data.get('overall_recommendation', 'N/A')
-            score_color = '#10b981' if score >= 75 else '#eab308' if score >= 50 else '#ef4444'
-            
-            score_data = [['Overall Score', 'Recommendation'], [f"{score}/100", rec]]
-            score_table = Table(score_data, colWidths=[2.5*inch, 4*inch])
-            score_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), HexColor('#f3f4f6')),
-                ('TEXTCOLOR', (0, 1), (0, 1), HexColor(score_color)),
-                ('FONTSIZE', (0, 1), (-1, 1), 14),
-                ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('GRID', (0, 0), (-1, -1), 0.5, HexColor('#e5e7eb')),
-                ('TOPPADDING', (0, 0), (-1, -1), 10),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
-            ]))
-            story.append(score_table)
-            story.append(Spacer(1, 16))
-            
-            # Key Wins
-            story.append(Paragraph("Key Wins", heading_style))
-            for w in data.get('key_wins', []):
-                w_clean = ''.join(c if c.isprintable() else ' ' for c in str(w))
-                story.append(Paragraph(f"✓ {w_clean}", bullet_style))
-            
-            # Critical Improvements
-            story.append(Paragraph("Critical Improvements", heading_style))
-            for i in data.get('critical_improvements', []):
-                i_clean = ''.join(c if c.isprintable() else ' ' for c in str(i))
-                story.append(Paragraph(f"• {i_clean}", bullet_style))
-            
-            # Stage Analysis
-            story.append(Paragraph("Stage-by-Stage Analysis", heading_style))
-            for stage in data.get('stage_analysis', []):
-                stage_name = stage.get('stage_name', 'Unknown')
-                stage_score = stage.get('stage_score', 0)
-                story.append(Paragraph(f"{stage_name} — {stage_score}/10", subhead_style))
-                
-                for skill in stage.get('skills', []):
-                    skill_name = skill.get('skill_name', '')
-                    skill_score = skill.get('score', 0)
-                    story.append(Paragraph(f"<b>{skill_name}:</b> {skill_score}/10", body_style))
-                    for fb in skill.get('feedback', []):
-                        fb_clean = ''.join(c if c.isprintable() else ' ' for c in str(fb))
-                        story.append(Paragraph(f"→ {fb_clean}", bullet_style))
-            
-            # Deal Insights
-            ins = data.get('deal_insights', {})
-            if ins:
-                story.append(Paragraph("Deal Insights", heading_style))
-                story.append(Paragraph(f"<b>Deal Probability:</b> {ins.get('deal_probability', 'Unknown')}", body_style))
-                
-                if ins.get('buying_signals'):
-                    story.append(Paragraph("<b>Buying Signals:</b>", body_style))
-                    for s in ins['buying_signals']:
-                        s_clean = ''.join(c if c.isprintable() else ' ' for c in str(s))
-                        story.append(Paragraph(f"• {s_clean}", bullet_style))
-                
-                if ins.get('red_flags'):
-                    story.append(Paragraph("<b>Red Flags:</b>", body_style))
-                    for f in ins['red_flags']:
-                        f_clean = ''.join(c if c.isprintable() else ' ' for c in str(f))
-                        story.append(Paragraph(f"• {f_clean}", bullet_style))
-            
-            # Coaching Summary
-            coaching = data.get('coaching_summary', '')
-            if coaching:
-                story.append(Paragraph("Coaching Summary", heading_style))
-                coaching_clean = ''.join(c if c.isprintable() or c in '\n' else ' ' for c in str(coaching))
-                story.append(Paragraph(coaching_clean, body_style))
+        # Score
+        score = analysis.get('overall_score', 0)
+        story.append(Paragraph(f"<b>Overall Score: {score}/100</b>", styles['Heading2']))
+        story.append(Paragraph(analysis.get('overall_summary', ''), styles['Normal']))
+        story.append(Spacer(1, 20))
+        
+        # Key Wins
+        story.append(Paragraph("<b>Key Wins</b>", styles['Heading3']))
+        for w in analysis.get('key_wins', []):
+            story.append(Paragraph(f"• {w}", styles['Normal']))
+        story.append(Spacer(1, 10))
+        
+        # Improvements
+        story.append(Paragraph("<b>Critical Improvements</b>", styles['Heading3']))
+        for i in analysis.get('critical_improvements', []):
+            story.append(Paragraph(f"• {i}", styles['Normal']))
+        story.append(Spacer(1, 10))
+        
+        # Coaching Summary
+        story.append(Paragraph("<b>Coaching Summary</b>", styles['Heading3']))
+        story.append(Paragraph(analysis.get('coaching_summary', ''), styles['Normal']))
         
         doc.build(story)
         buffer.seek(0)
@@ -572,82 +392,86 @@ def export_to_pdf(data, title="Sales Call Analysis"):
     except Exception as e:
         return None
 
-def analyze_call(call_type, prospect_name, company_name, deal_size, stage, notes, transcript, 
-                 persona="balanced", rigor="balanced", key_concerns=""):
-    """
-    Analyze a sales call with customizable coaching settings.
-    
-    Args:
-        persona: Key from COACH_PERSONAS
-        rigor: Key from RIGOR_LEVELS
-        key_concerns: Optional user-provided specific concerns to address
-    """
-    fw = CALL_FRAMEWORKS.get(call_type, CALL_FRAMEWORKS['discovery'])
-    stages_desc = "\n".join([f"### {s['name']} (Weight: {s['weight']}%)\nSkills: {', '.join(s['skills'])}" for s in fw['stages'].values()])
-    
-    # Get persona and rigor settings
+
+def call_claude(prompt, max_tokens=4000, action="analyze"):
+    """Call Claude API for analysis."""
+    try:
+        api_key = ANTHROPIC_API_KEY or os.environ.get("ANTHROPIC_API_KEY", "")
+        if not api_key:
+            return "Error: No API key configured", 0
+        
+        model = CLAUDE_MODEL if USING_SHARED else "claude-sonnet-4-20250514"
+        
+        response = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json"
+            },
+            json={
+                "model": model,
+                "max_tokens": max_tokens,
+                "messages": [{"role": "user", "content": prompt}]
+            },
+            timeout=120
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            result = data.get("content", [{}])[0].get("text", "")
+            tokens = data.get("usage", {}).get("output_tokens", 0)
+            log_usage(st.session_state.get("user", {}).get("id"), st.session_state.get("session_token"), "sales", action, tokens)
+            return result, tokens
+        else:
+            return f"Error: API returned {response.status_code}", 0
+    except Exception as e:
+        return f"Error: {str(e)}", 0
+
+
+def analyze_call(transcript, call_type, prospect_name, company, deal_size, stage, notes, persona, rigor, concerns, your_website="", lead_website="", lead_linkedin=""):
+    """Analyze a sales call with all context."""
+    framework = CALL_FRAMEWORKS.get(call_type, CALL_FRAMEWORKS["discovery"])
     persona_config = COACH_PERSONAS.get(persona, COACH_PERSONAS["balanced"])
     rigor_config = RIGOR_LEVELS.get(rigor, RIGOR_LEVELS["balanced"])
     
-    # Build key concerns section
-    concerns_section = ""
-    if key_concerns and key_concerns.strip():
-        concerns_section = f"""
-## SPECIFIC CONCERNS TO ADDRESS
-The user has specific concerns they want you to address in this analysis:
-{key_concerns}
-
-Make sure to explicitly address these concerns in your analysis with evidence from the transcript.
-"""
-
-    # Get few-shot examples
-    few_shot_section = get_sales_few_shot_examples() if HAS_EXAMPLES else ""
+    few_shot = get_sales_few_shot_examples() if HAS_EXAMPLES else ""
+    
+    # Build context section
+    context_parts = []
+    if your_website:
+        context_parts.append(f"Seller's Website: {your_website} (use this to understand their value proposition)")
+    if lead_website:
+        context_parts.append(f"Lead's Website: {lead_website}")
+    if lead_linkedin:
+        context_parts.append(f"Lead's LinkedIn: {lead_linkedin}")
+    
+    context_section = "\n".join(context_parts) if context_parts else ""
     
     prompt = f"""{persona_config['system_prompt']}
 
 {rigor_config['prompt_modifier']}
 
-You are analyzing a {fw['name']}.
+You are analyzing a {framework['name']} for {prospect_name or 'the prospect'} at {company or 'their company'}.
+Deal Size: {deal_size or 'Unknown'}
+Current Stage: {stage}
+{f"Additional Context: {notes}" if notes else ""}
+{context_section}
 
-## CALL CONTEXT
-- Prospect: {prospect_name or 'Unknown'} at {company_name or 'Unknown Company'}
-- Deal Size: {deal_size or 'Unknown'}
-- Stage: {stage or 'Unknown'}
-- Notes: {notes or 'None'}
+{f"## SPECIFIC CONCERNS TO ADDRESS:{chr(10)}The user specifically wants you to analyze: {concerns}{chr(10)}Make sure to directly address these concerns in your analysis." if concerns else ""}
 
-## CALL-TYPE-SPECIFIC EVALUATION (Stages)
-{stages_desc}
+## FRAMEWORK: {framework['name']}
+Stages and weights:
+{json.dumps(framework['stages'], indent=2)}
 
-## CORE SALES SKILLS FRAMEWORK (Universal - applies to ALL call types)
-Rate the rep on these 6 universal sales skills that transfer across any call type:
+{few_shot}
 
-1. **Call Control (0-10)**: Did the rep maintain structure and authority? Smooth transitions? Kept conversation on track?
-2. **Discovery Depth (0-10)**: How well did they uncover the prospect's situation, goals, pain points, and gaps?
-3. **Belief Shifting (0-10)**: Did they effectively reframe objections and position their offering as the logical solution?
-4. **Objection Handling (0-10)**: Were objections pre-handled or post-handled effectively? Did they have good responses?
-5. **Pitch Effectiveness (0-10)**: Clear value prop? Good demos/examples? Connected offering to prospect's specific goals?
-6. **Closing Strength (0-10)**: Created urgency? Clear next steps? Asked for commitment? Used social proof?
-
-{concerns_section}
-{few_shot_section}
-
-## TRANSCRIPT
+## TRANSCRIPT TO ANALYZE:
 {transcript[:20000]}
 
 ---
 
-Analyze this call thoroughly. Provide TWO levels of analysis:
-1. **Stage Analysis**: Specific to this {fw['name']} - what happened at each stage
-2. **Core Sales Skills**: Universal skills that apply to ALL call types (for tracking improvement over time)
-
-**CRITICAL REQUIREMENTS:**
-1. Use EXACT timestamps from the transcript in [MM:SS] or [MM:SS-MM:SS] format
-2. Include DIRECT QUOTES from the transcript
-3. For each objection, specify: Pre-Handled? Post-Handled? Effectiveness Score
-4. Include "Fix for Next Call" scripts for weak areas
-5. Explain WHY something worked or didn't work
-
-Return your analysis in this JSON format:
+Analyze this call and return JSON:
 ```json
 {{
     "overall_score": <0-100>,
@@ -656,74 +480,33 @@ Return your analysis in this JSON format:
     "rigor": "{rigor}",
     "stages": [
         {{
-            "stage_name": "<Stage Name>",
+            "stage_name": "<stage>",
             "stage_score": <0-10>,
             "skills": [
                 {{
-                    "skill_name": "<Skill Name>",
+                    "skill_name": "<skill>",
                     "score": <0-10>,
-                    "score_label": "<Excellent|Good|Needs Work|Missed>",
-                    "what_worked": ["<specific thing that worked with timestamp and quote>"],
-                    "what_needed_improvement": ["<specific thing to improve with timestamp>"],
-                    "transcript_examples": ["<exact quote with [MM:SS] timestamp>"],
-                    "fix_for_next_call": "<specific script or approach for next time>"
+                    "what_worked": ["<specific example with timestamp>"],
+                    "what_needed_improvement": ["<specific issue with timestamp>"],
+                    "transcript_evidence": ["<exact quote>"],
+                    "improvement": "<specific actionable fix>"
                 }}
             ]
         }}
     ],
-    "core_sales_skills": {{
-        "call_control": {{
-            "score": <0-10>,
-            "summary": "<one sentence summary>",
-            "evidence": ["<specific example with timestamp>"],
-            "improvement": "<what to work on>"
-        }},
-        "discovery_depth": {{
-            "score": <0-10>,
-            "summary": "<one sentence summary>",
-            "evidence": ["<specific example with timestamp>"],
-            "improvement": "<what to work on>"
-        }},
-        "belief_shifting": {{
-            "score": <0-10>,
-            "summary": "<one sentence summary>",
-            "evidence": ["<specific example with timestamp>"],
-            "improvement": "<what to work on>"
-        }},
-        "objection_handling": {{
-            "score": <0-10>,
-            "summary": "<one sentence summary>",
-            "evidence": ["<specific example with timestamp>"],
-            "improvement": "<what to work on>"
-        }},
-        "pitch_effectiveness": {{
-            "score": <0-10>,
-            "summary": "<one sentence summary>",
-            "evidence": ["<specific example with timestamp>"],
-            "improvement": "<what to work on>"
-        }},
-        "closing_strength": {{
-            "score": <0-10>,
-            "summary": "<one sentence summary>",
-            "evidence": ["<specific example with timestamp>"],
-            "improvement": "<what to work on>"
-        }},
-        "total_score": <0-60>,
-        "strongest_skill": "<which of the 6 skills was best>",
-        "weakest_skill": "<which of the 6 skills needs most work>"
-    }},
     "objections_breakdown": [
         {{
-            "objection": "<what the prospect said>",
-            "timestamp": "<[MM:SS]>",
-            "pre_handled": <true/false>,
-            "post_handled": <true/false>,
+            "objection": "<what prospect said>",
+            "timestamp": "<[MM:SS] or approximate location>",
+            "pre_handled": <true if rep anticipated it>,
+            "post_handled": <true if rep addressed it after>,
             "effectiveness_score": <0-10>,
             "what_worked": "<what the rep did well>",
             "what_needed_improvement": "<what could be better>",
-            "fix_for_next_call": "<specific script to handle this objection better>"
+            "fix_for_next_call": "<exact script to use next time>"
         }}
     ],
+    {f'"concerns_addressed": [{{"concern": "{concerns}", "finding": "<direct answer to their concern>", "evidence": "<quote or observation from transcript>"}}],' if concerns else ''}
     "key_wins": ["<something done well with timestamp>", "<another strength>"],
     "critical_improvements": ["<most important fix>", "<second priority>"],
     "deal_insights": {{
@@ -747,37 +530,143 @@ Be specific. Use exact quotes with timestamps. Be constructive but honest."""
     return call_claude(prompt, 8000, f"analyze_{call_type}")
 
 
-def analyze_recruiting_bd_call(transcript, call_type="cold_outreach", company="", title="", services=None, concerns=""):
+def analyze_recruiting_bd_call(transcript, call_type="cold_outreach", company="", title="", services=None, concerns="", your_website="", lead_website="", lead_linkedin=""):
     """Analyze a recruiting BD call - selling recruiting services to clients."""
     services = services or ["Permanent"]
-    prompt = f"""You are an expert recruiting sales trainer analyzing a BD call.
+    
+    # Build context section
+    context_parts = []
+    if your_website:
+        context_parts.append(f"Your Agency Website: {your_website} (use this to understand your value proposition and differentiators)")
+    if lead_website:
+        context_parts.append(f"Prospect's Company Website: {lead_website}")
+    if lead_linkedin:
+        context_parts.append(f"Prospect's LinkedIn: {lead_linkedin}")
+    
+    context_section = "\n".join(context_parts) if context_parts else ""
+    
+    prompt = f"""You are an expert recruiting sales trainer analyzing a business development call.
 
 CALL: {call_type.replace('_',' ').title()} | Prospect: {title} at {company} | Services: {', '.join(services)}
-{f"FOCUS ON: {concerns}" if concerns else ""}
+{context_section}
+
+{f"## SPECIFIC CONCERNS TO ADDRESS:{chr(10)}The user specifically wants you to analyze: {concerns}{chr(10)}Make sure to directly address these concerns in your analysis with specific evidence." if concerns else ""}
 
 EVALUATE THESE BD SKILLS:
-1. Opening & Permission (10%) - Earned right to continue? Value hook?
-2. Hiring Pain Discovery (25%) - Open roles? Time-to-fill? Cost of vacancy?
-3. Value Proposition (20%) - vs internal? vs other agencies? Success stories?
-4. Objection Handling (20%) - WATCH: "fees too high", "use internal", "already have agency", "send candidates first"
-5. Fee Discussion (15%) - Held fee? Justified value? Contingent/retained/exclusive?
-6. Close & Next Steps (10%) - Got commitment? Job order? Meeting?
+1. Opening & Permission (10%) - Earned right to continue? Value hook? Research shown?
+2. Hiring Pain Discovery (25%) - Open roles? Time-to-fill? Cost of vacancy? Current methods failing?
+3. Value Proposition (20%) - vs internal TA? vs other agencies? Success stories? Unique approach?
+4. Objection Handling (20%) - WATCH FOR: "fees too high", "use internal recruiters", "already have agency", "send candidates first", "not hiring now"
+5. Fee Discussion (15%) - Held fee or caved? Justified with value? Contingent/retained/exclusive positioning?
+6. Close & Next Steps (10%) - Got commitment? Job order taken? Meeting scheduled? Clear follow-up?
 
 TRANSCRIPT:
 {transcript[:18000]}
 
 Return JSON:
 ```json
-{{"overall_score": <0-100>, "overall_summary": "<2-3 sentences>", "skills": [{{"skill_name": "<n>", "score": <0-10>, "what_worked": ["<x>"], "what_needed_improvement": ["<x>"], "fix_for_next_call": "<script>"}}], "objections_breakdown": [{{"objection": "<text>", "pre_handled": <bool>, "post_handled": <bool>, "effectiveness_score": <0-10>, "fix_for_next_call": "<script>"}}], "strengths": ["<x>"], "priority_improvements": ["<x>"], "deal_outcome": {{"likely_outcome": "<Won|Pending|Lost>", "fee_discussed": "<x>", "exclusivity": "<x>"}}, "coaching_summary": "<paragraph>"}}
+{{
+    "overall_score": <0-100>,
+    "overall_summary": "<2-3 sentences>",
+    "skills": [
+        {{
+            "skill_name": "<skill name>",
+            "score": <0-10>,
+            "what_worked": ["<specific example>"],
+            "what_needed_improvement": ["<specific issue>"],
+            "transcript_evidence": ["<exact quote>"],
+            "fix_for_next_call": "<exact script to use>"
+        }}
+    ],
+    "objections_breakdown": [
+        {{
+            "objection": "<what they said>",
+            "timestamp": "<[MM:SS] or location>",
+            "pre_handled": <bool>,
+            "post_handled": <bool>,
+            "effectiveness_score": <0-10>,
+            "what_worked": "<text>",
+            "what_needed_improvement": "<text>",
+            "fix_for_next_call": "<script>"
+        }}
+    ],
+    {f'"concerns_addressed": [{{"concern": "{concerns}", "finding": "<direct answer>", "evidence": "<quote from transcript>"}}],' if concerns else ''}
+    "strengths": ["<strength with evidence>"],
+    "priority_improvements": ["<improvement needed>"],
+    "deal_outcome": {{
+        "likely_outcome": "<Won|Pending|Lost|Unknown>",
+        "fee_discussed": "<what was agreed or discussed>",
+        "exclusivity": "<Exclusive|Contingent|Retained|Not discussed>",
+        "next_steps_agreed": ["<specific next step>"]
+    }},
+    "coaching_summary": "<paragraph of specific coaching advice>"
+}}
 ```"""
-    return call_claude(prompt, 5000, "recruiting_bd")
+    return call_claude(prompt, 6000, "recruiting_bd")
 
+
+def generate_followup_email(analysis, tone="professional", custom_prompt="", mode="general"):
+    """Generate a follow-up email based on call analysis."""
+    tone_config = EMAIL_TONES.get(tone, EMAIL_TONES["professional"])
+    
+    # Extract key info from analysis
+    if mode == "bd":
+        deal_outcome = analysis.get("deal_outcome", {})
+        next_steps = deal_outcome.get("next_steps_agreed", [])
+        context = f"""
+Call Outcome: {deal_outcome.get('likely_outcome', 'Unknown')}
+Fee Discussed: {deal_outcome.get('fee_discussed', 'Not discussed')}
+Next Steps Agreed: {', '.join(next_steps) if next_steps else 'None specified'}
+"""
+    else:
+        insights = analysis.get("deal_insights", {})
+        next_steps = insights.get("next_steps_suggested", [])
+        context = f"""
+Deal Probability: {insights.get('deal_probability', 'Unknown')}
+Buying Signals: {', '.join(insights.get('buying_signals', [])[:3])}
+Next Steps: {', '.join(next_steps[:3]) if next_steps else 'None specified'}
+"""
+
+    prompt = f"""Write a follow-up email based on this sales call analysis.
+
+TONE: {tone_config['prompt']}
+
+CALL SUMMARY:
+Overall Score: {analysis.get('overall_score', 'N/A')}/100
+{analysis.get('overall_summary', '')}
+
+{context}
+
+Key Wins from Call: {', '.join(analysis.get('key_wins', analysis.get('strengths', []))[:3])}
+
+{f"SPECIFIC REQUEST: {custom_prompt}" if custom_prompt else ""}
+
+Write a concise, effective follow-up email that:
+1. References something specific from the conversation
+2. Reinforces the value discussed
+3. Proposes clear next steps
+4. Matches the requested tone
+
+Return ONLY the email (no explanation):
+Subject: <subject line>
+
+<email body>"""
+
+    result, _ = call_claude(prompt, 1500, "followup_email")
+    return result
+
+
+# ============================================
+# STREAMLIT APP
+# ============================================
 st.set_page_config(page_title="Sharp Sales", page_icon="💰", layout="wide")
 init_session()
 check_url_auth()
 
+# CSS with Material Icons fix
 st.markdown("""<style>
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/icon?family=Material+Icons');
 *, *::before, *::after { font-family: 'Nunito', sans-serif !important; }
 .stApp, [data-testid="stAppViewContainer"] { background: #1a1a1a !important; }
 [data-testid="stHeader"] { background: transparent !important; }
@@ -797,11 +686,12 @@ p,span,label,div,li { color: #e5e5e5; }
 .input-section { background: #2a2a2a; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 20px; margin: 12px 0; }
 .transcript-quote { background: #333; border-left: 3px solid #6366f1; padding: 12px 16px; margin: 8px 0; border-radius: 0 8px 8px 0; font-style: italic; color: #a5b4fc; }
 .improvement-box { background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.3); border-radius: 8px; padding: 16px; margin-top: 12px; }
-/* Working Status Badge with Logo Spinner */
 .status-badge { position: fixed; top: 70px; right: 20px; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; padding: 12px 24px 12px 50px; border-radius: 25px; font-weight: 600; z-index: 9999; box-shadow: 0 4px 15px rgba(99,102,241,0.4); }
-.status-badge::before { content: ''; position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 28px; height: 28px; background: url('https://assets.sharphuman.com/logo_spinner_small_transparent.png') center/contain no-repeat; }
-@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+.status-badge::before { content: ''; position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 28px; height: 28px; background: url('https://assets.sharphuman.com/logo_spinner_small.gif') center/contain no-repeat; }
 div[data-testid="stPopover"] button { background: linear-gradient(135deg, #6366f1, #8b5cf6) !important; color: white !important; border: none !important; border-radius: 25px !important; }
+/* Fix Material Icons in expanders */
+.material-icons { font-family: 'Material Icons' !important; }
+[data-testid="stExpander"] summary span { font-family: 'Nunito', sans-serif !important; }
 </style>""", unsafe_allow_html=True)
 
 # Auth
@@ -849,25 +739,28 @@ with st.sidebar:
 # Header
 st.markdown("""<div style="display:flex;align-items:center;gap:16px;padding:20px 0;border-bottom:1px solid rgba(99,102,241,0.2);margin-bottom:20px;"><img src="https://sharphuman.com/logo1-3.png" style="width:50px;"><div><h1 style="margin:0;font-size:28px;">Sharp Sales</h1><p style="color:#9ca3af;margin:0;">AI-Powered Sales Call Analysis</p></div></div>""", unsafe_allow_html=True)
 
-# Mode Selector
+# Mode Selector - Updated name
 mode_cols = st.columns([1, 2, 1])
 with mode_cols[1]:
-    sales_mode = st.segmented_control("Mode", ["💼 General Sales", "👔 Recruiting BD"], default="💼 General Sales", label_visibility="collapsed")
+    sales_mode = st.segmented_control("Mode", ["💼 General Sales", "👔 Recruiting Business Development"], default="💼 General Sales", label_visibility="collapsed")
 
 st.markdown("---")
 
-# Initialize BD state
+# Initialize states
 if 'bd_result' not in st.session_state:
     st.session_state.bd_result = None
+if 'followup_email' not in st.session_state:
+    st.session_state.followup_email = None
 
-# ===== RECRUITING BD MODE =====
-if sales_mode == "👔 Recruiting BD":
-    st.markdown("### 👔 Recruiting BD Call Analyzer")
+# ===== RECRUITING BUSINESS DEVELOPMENT MODE =====
+if sales_mode == "👔 Recruiting Business Development":
+    st.markdown("### 👔 Recruiting Business Development")
     st.caption("Analyze your client acquisition calls - selling recruiting services to prospects")
     
     if st.session_state.bd_result:
-        if st.button("← Analyze Another BD Call"):
+        if st.button("← Analyze Another Call"):
             st.session_state.bd_result = None
+            st.session_state.followup_email = None
             st.rerun()
         try:
             m = re.search(r'```json\s*(.*?)\s*```', st.session_state.bd_result, re.DOTALL)
@@ -880,6 +773,19 @@ if sales_mode == "👔 Recruiting BD":
                 <p style="color:{color};font-size:64px;font-weight:bold;margin:10px 0;">{score}<span style="font-size:24px;color:#6b7280;">/100</span></p>
                 <p style="color:#e5e5e5;">{a.get('overall_summary', '')}</p>
             </div>""", unsafe_allow_html=True)
+            
+            # Concerns Addressed Section
+            concerns_addressed = a.get('concerns_addressed', [])
+            if concerns_addressed:
+                st.markdown("### 🎯 Your Concerns Addressed")
+                for c in concerns_addressed:
+                    st.markdown(f"""<div style="background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.3);border-radius:12px;padding:16px;margin:12px 0;">
+                        <p style="color:#a5b4fc;font-weight:600;margin:0 0 8px;">❓ {c.get('concern', '')}</p>
+                        <p style="color:#e5e5e5;margin:0 0 8px;">💡 {c.get('finding', '')}</p>
+                        <p style="color:#9ca3af;font-style:italic;margin:0;">📍 "{c.get('evidence', '')}"</p>
+                    </div>""", unsafe_allow_html=True)
+                st.markdown("---")
+            
             c1, c2 = st.columns(2)
             with c1:
                 st.markdown("#### 💪 Strengths")
@@ -887,12 +793,15 @@ if sales_mode == "👔 Recruiting BD":
             with c2:
                 st.markdown("#### 🎯 Improvements")
                 for i in a.get('priority_improvements', []): st.warning(i)
+            
             st.markdown("---")
+            st.markdown("### 📊 Skills Breakdown")
             for skill in a.get('skills', []):
                 with st.expander(f"**{skill.get('skill_name')}** — {skill.get('score', 0)}/10"):
                     for w in skill.get('what_worked', []): st.markdown(f"✅ {w}")
                     for w in skill.get('what_needed_improvement', []): st.markdown(f"❌ {w}")
                     if skill.get('fix_for_next_call'): st.info(f"⚡ {skill.get('fix_for_next_call')}")
+            
             objections = a.get('objections_breakdown', [])
             if objections:
                 st.markdown("---")
@@ -901,57 +810,119 @@ if sales_mode == "👔 Recruiting BD":
                     with st.expander(f"Objection {i}: {obj.get('objection', '')[:50]}... ({obj.get('effectiveness_score', 0)}/10)"):
                         st.markdown(f"Pre: {'✅' if obj.get('pre_handled') else '❌'} | Post: {'✅' if obj.get('post_handled') else '❌'}")
                         if obj.get('fix_for_next_call'): st.info(f"⚡ {obj.get('fix_for_next_call')}")
+            
             deal = a.get('deal_outcome', {})
             if deal:
                 st.markdown("---")
+                st.markdown("### 🎯 Deal Outcome")
                 dc1, dc2, dc3 = st.columns(3)
                 with dc1: st.metric("Outcome", deal.get('likely_outcome', '?'))
-                with dc2: st.metric("Fee", deal.get('fee_discussed', 'N/A')[:15])
+                with dc2: st.metric("Fee", str(deal.get('fee_discussed', 'N/A'))[:15])
                 with dc3: st.metric("Exclusivity", deal.get('exclusivity', 'N/A'))
+            
             st.markdown("---")
-            st.markdown(f"### 🎓 Coaching\n{a.get('coaching_summary', '')}")
-            st.download_button("📥 Download", st.session_state.bd_result, "bd_analysis.json", use_container_width=True)
+            st.markdown(f"### 🎓 Coaching Summary\n{a.get('coaching_summary', '')}")
+            
+            # Follow-up Email Generator
+            st.markdown("---")
+            st.markdown("### 📧 Follow-up Email Generator")
+            
+            fe_col1, fe_col2 = st.columns([2, 1])
+            with fe_col1:
+                email_prompt = st.text_area("What do you want to achieve with this email?", placeholder="e.g., 'Confirm the job order details and fee agreement' or 'Re-engage after they went quiet'", height=80)
+            with fe_col2:
+                email_tone = st.selectbox("Tone:", options=list(EMAIL_TONES.keys()), format_func=lambda x: EMAIL_TONES[x]['name'])
+            
+            if st.button("✉️ Generate Follow-up Email", use_container_width=True):
+                with st.spinner("Generating email..."):
+                    st.session_state.followup_email = generate_followup_email(a, email_tone, email_prompt, mode="bd")
+            
+            if st.session_state.followup_email:
+                st.markdown("#### Generated Email:")
+                st.code(st.session_state.followup_email, language=None)
+                st.download_button("📥 Copy Email", st.session_state.followup_email, "followup_email.txt", use_container_width=True)
+            
+            st.markdown("---")
+            st.download_button("📥 Download Full Analysis", st.session_state.bd_result, "bd_analysis.json", use_container_width=True)
+        
         except Exception as e:
             st.error(f"Error: {e}")
     else:
+        # BD Input Form - Upload as default
         col1, col2 = st.columns(2)
         with col1:
             st.markdown('<div class="input-section">', unsafe_allow_html=True)
+            st.markdown("**Call Details**")
             bd_type = st.selectbox("Call Type", ["cold_outreach", "warm_intro", "inbound_lead", "referral", "follow_up"],
-                format_func=lambda x: {"cold_outreach": "❄️ Cold", "warm_intro": "🤝 Warm", "inbound_lead": "📥 Inbound", "referral": "🔗 Referral", "follow_up": "🔄 Follow-up"}.get(x, x))
-            bd_co = st.text_input("Company", placeholder="Acme Corp")
-            bd_title = st.text_input("Title", placeholder="VP Engineering")
-            bd_svc = st.multiselect("Services", ["Permanent", "Contract", "Executive", "RPO"], default=["Permanent"])
-            bd_concerns = st.text_area("Concerns (optional)", height=60, placeholder="Fee objection?")
+                format_func=lambda x: {"cold_outreach": "❄️ Cold Outreach", "warm_intro": "🤝 Warm Introduction", "inbound_lead": "📥 Inbound Lead", "referral": "🔗 Referral", "follow_up": "🔄 Follow-up"}.get(x, x))
+            
+            bd_co = st.text_input("Prospect Company", placeholder="Acme Corp")
+            bd_title = st.text_input("Prospect Title", placeholder="VP of Engineering")
+            bd_svc = st.multiselect("Services Discussed", ["Permanent Placement", "Contract Staffing", "Executive Search", "RPO"], default=["Permanent Placement"])
             st.markdown('</div>', unsafe_allow_html=True)
+            
+            st.markdown('<div class="input-section">', unsafe_allow_html=True)
+            st.markdown("**Context (Optional)**")
+            bd_your_website = st.text_input("Your Agency Website", placeholder="https://yourrecruiting.com - we'll analyze your value prop")
+            bd_lead_website = st.text_input("Prospect's Website", placeholder="https://acmecorp.com")
+            bd_lead_linkedin = st.text_input("Prospect's LinkedIn", placeholder="https://linkedin.com/in/prospect")
+            bd_concerns = st.text_area("Specific concerns to analyze", height=68, placeholder="e.g., 'Did I handle the fee objection well?' or 'Was my value prop clear?'")
+            st.markdown('</div>', unsafe_allow_html=True)
+        
         with col2:
             st.markdown('<div class="input-section">', unsafe_allow_html=True)
-            bd_in = st.radio("Input", ["📝 Paste", "📁 Upload"], horizontal=True)
+            st.markdown("**Call Recording / Transcript**")
+            # Upload as default
+            bd_in = st.radio("Input Method", ["📁 Upload File", "📝 Paste Transcript"], horizontal=True)
             bd_txt = ""
-            if bd_in == "📝 Paste":
-                bd_txt = st.text_area("Transcript", height=280, placeholder="You: Hi...", key="bd_t")
-            else:
-                f = st.file_uploader("Upload", type=['txt', 'pdf', 'docx', 'vtt'], key="bd_f")
+            if bd_in == "📁 Upload File":
+                f = st.file_uploader("Upload recording or transcript", type=['txt', 'pdf', 'docx', 'vtt', 'srt'], key="bd_f", help="Supports: TXT, PDF, DOCX, VTT, SRT")
                 if f:
                     bd_txt = extract_text_from_file(f)
-                    if bd_txt and not bd_txt.startswith("["): st.success(f"✅ {len(bd_txt):,} chars")
+                    if bd_txt and not bd_txt.startswith("["): st.success(f"✅ {len(bd_txt):,} characters loaded")
+            else:
+                bd_txt = st.text_area("Paste transcript", height=280, placeholder="You: Hi Sarah, thanks for taking my call...", key="bd_t")
             st.markdown('</div>', unsafe_allow_html=True)
+        
         st.markdown("---")
         if st.button("👔 Analyze BD Call", type="primary", use_container_width=True):
-            if len(bd_txt.strip()) < 100: st.warning("Min 100 chars")
+            if len(bd_txt.strip()) < 100: st.warning("Transcript too short (min 100 characters)")
             else:
-                with st.spinner("Analyzing... 20-40s"):
-                    r, _ = analyze_recruiting_bd_call(bd_txt, bd_type, bd_co, bd_title, bd_svc, bd_concerns)
-                if not str(r).startswith("Error"):
-                    st.session_state.bd_result = r
-                    st.rerun()
-                else: st.error(r)
+                st.session_state.working_on = "Analyzing BD call..."
+                st.rerun()
+    
+    # Handle BD analysis (after rerun with working_on set)
+    if st.session_state.working_on == "Analyzing BD call...":
+        # Get form values from session or re-collect
+        with st.spinner("🔄 Analyzing your call... 20-40 seconds"):
+            bd_txt = st.session_state.get('_bd_txt', '')
+            if not bd_txt:
+                st.session_state.working_on = None
+                st.rerun()
+            r, _ = analyze_recruiting_bd_call(
+                bd_txt, 
+                st.session_state.get('_bd_type', 'cold_outreach'),
+                st.session_state.get('_bd_co', ''),
+                st.session_state.get('_bd_title', ''),
+                st.session_state.get('_bd_svc', ['Permanent']),
+                st.session_state.get('_bd_concerns', ''),
+                st.session_state.get('_bd_your_website', ''),
+                st.session_state.get('_bd_lead_website', ''),
+                st.session_state.get('_bd_lead_linkedin', '')
+            )
+        st.session_state.working_on = None
+        if not str(r).startswith("Error"):
+            st.session_state.bd_result = r
+            st.rerun()
+        else: 
+            st.error(r)
 
 # ===== GENERAL SALES MODE =====
 elif st.session_state.get('analysis_result'):
     # Results View
     if st.button("← New Analysis", type="secondary"):
         st.session_state.analysis_result = None
+        st.session_state.followup_email = None
         st.rerun()
     
     try:
@@ -976,6 +947,18 @@ elif st.session_state.get('analysis_result'):
             <p style="color:#e5e5e5;">{a.get('overall_summary', '')}</p>
         </div>""", unsafe_allow_html=True)
         
+        # Concerns Addressed Section
+        concerns_addressed = a.get('concerns_addressed', [])
+        if concerns_addressed:
+            st.markdown("### 🎯 Your Concerns Addressed")
+            for c in concerns_addressed:
+                st.markdown(f"""<div style="background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.3);border-radius:12px;padding:16px;margin:12px 0;">
+                    <p style="color:#a5b4fc;font-weight:600;margin:0 0 8px;">❓ {c.get('concern', '')}</p>
+                    <p style="color:#e5e5e5;margin:0 0 8px;">💡 {c.get('finding', '')}</p>
+                    <p style="color:#9ca3af;font-style:italic;margin:0;">📍 "{c.get('evidence', '')}"</p>
+                </div>""", unsafe_allow_html=True)
+            st.markdown("---")
+        
         c1, c2 = st.columns(2)
         with c1:
             st.markdown("#### ✅ Key Wins")
@@ -994,146 +977,50 @@ elif st.session_state.get('analysis_result'):
                     bc = "#10b981" if sc >= 8 else "#eab308" if sc >= 6 else "#f97316" if sc >= 4 else "#ef4444"
                     sym = "✓" if sc >= 6 else "−" if sc >= 4 else "✗"
                     
-                    st.markdown(f"<div style='background:#12121a;border-radius:12px;padding:16px;margin:12px 0;border:1px solid rgba(99,102,241,0.2);'><div style='display:flex;justify-content:space-between;'><span style='font-weight:600;color:#fff;'>{sk.get('skill_name')}</span><span style='background:rgba(99,102,241,0.2);color:{bc};padding:6px 14px;border-radius:20px;font-size:13px;'>{sym} {sc}/10</span></div></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div style='background:#1f1f1f;border-radius:12px;padding:16px;margin:12px 0;border:1px solid rgba(99,102,241,0.2);'><div style='display:flex;justify-content:space-between;'><span style='font-weight:600;color:#fff;'>{sk.get('skill_name')}</span><span style='background:rgba(99,102,241,0.2);color:{bc};padding:6px 14px;border-radius:20px;font-size:13px;'>{sym} {sc}/10</span></div></div>", unsafe_allow_html=True)
                     
-                    # What Worked
                     if sk.get('what_worked'):
                         st.markdown("**✅ What Worked:**")
-                        for fb in sk.get('what_worked', []): st.markdown(f"→ {fb}")
+                        for w in sk.get('what_worked', []):
+                            st.markdown(f"→ {w}")
                     
-                    # What Needed Improvement
                     if sk.get('what_needed_improvement'):
-                        st.markdown("**❌ What Needed Improvement:**")
-                        for fb in sk.get('what_needed_improvement', []): st.markdown(f"→ {fb}")
+                        st.markdown("**❌ Needs Improvement:**")
+                        for w in sk.get('what_needed_improvement', []):
+                            st.markdown(f"→ {w}")
                     
-                    # Legacy feedback field
-                    if sk.get('feedback'):
-                        st.markdown("**Feedback:**")
-                        for fb in sk.get('feedback', []): st.markdown(f"→ {fb}")
+                    evidence = sk.get('transcript_evidence', [])
+                    if evidence:
+                        st.markdown("**📍 Evidence:**")
+                        for e in evidence:
+                            st.markdown(f'<div class="transcript-quote">{e}</div>', unsafe_allow_html=True)
                     
-                    if sk.get('transcript_examples'):
-                        st.markdown("**📍 From the call:**")
-                        for q in sk.get('transcript_examples', []): st.markdown(f'<div class="transcript-quote">"{q}"</div>', unsafe_allow_html=True)
-                    
-                    if sk.get('fix_for_next_call') or sk.get('improvement_example'):
-                        fix = sk.get('fix_for_next_call') or sk.get('improvement_example')
-                        st.markdown(f'<div class="improvement-box"><p style="color:#10b981;margin:0 0 8px;font-weight:600;">⚡ Fix for Next Call:</p><p style="color:#e5e5e5;margin:0;font-style:italic;">{fix}</p></div>', unsafe_allow_html=True)
+                    improvement = sk.get('improvement', '')
+                    if improvement:
+                        st.markdown(f'<div class="improvement-box"><p style="color:#10b981;margin:0 0 8px;font-weight:600;">💡 To Improve:</p><p style="color:#e5e5e5;margin:0;">{improvement}</p></div>', unsafe_allow_html=True)
         
-        # Core Sales Skills Section (n8n Framework - NEW)
-        core_skills = a.get('core_sales_skills', {})
-        if core_skills:
-            st.markdown("---")
-            st.markdown("## 🎯 Core Sales Skills")
-            st.caption("Universal skills that transfer across ALL call types — track these over time!")
-            
-            # Skills radar/summary
-            total = core_skills.get('total_score', 0)
-            total_color = "#10b981" if total >= 48 else "#eab308" if total >= 36 else "#ef4444"
-            strongest = core_skills.get('strongest_skill', 'N/A')
-            weakest = core_skills.get('weakest_skill', 'N/A')
-            
-            # Summary row
-            sum_c1, sum_c2, sum_c3 = st.columns(3)
-            with sum_c1:
-                st.markdown(f"""
-                <div style="background:#12121a;border-radius:12px;padding:20px;text-align:center;">
-                    <p style="color:#9ca3af;margin:0;font-size:12px;">SKILLS TOTAL</p>
-                    <p style="color:{total_color};font-size:36px;font-weight:bold;margin:8px 0;">{total}<span style="font-size:18px;color:#6b7280;">/60</span></p>
-                </div>
-                """, unsafe_allow_html=True)
-            with sum_c2:
-                st.markdown(f"""
-                <div style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:12px;padding:16px;text-align:center;">
-                    <p style="color:#10b981;margin:0;font-size:12px;">💪 STRONGEST</p>
-                    <p style="color:#fff;font-size:16px;font-weight:600;margin:8px 0;">{strongest.replace('_', ' ').title()}</p>
-                </div>
-                """, unsafe_allow_html=True)
-            with sum_c3:
-                st.markdown(f"""
-                <div style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:12px;padding:16px;text-align:center;">
-                    <p style="color:#ef4444;margin:0;font-size:12px;">🎯 FOCUS AREA</p>
-                    <p style="color:#fff;font-size:16px;font-weight:600;margin:8px 0;">{weakest.replace('_', ' ').title()}</p>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            # Individual skill cards
-            skill_labels = {
-                'call_control': ('🎮', 'Call Control'),
-                'discovery_depth': ('🔍', 'Discovery Depth'),
-                'belief_shifting': ('🧠', 'Belief Shifting'),
-                'objection_handling': ('🛡️', 'Objection Handling'),
-                'pitch_effectiveness': ('🎯', 'Pitch Effectiveness'),
-                'closing_strength': ('🏁', 'Closing Strength')
-            }
-            
-            # Two rows of 3 skills each
-            row1_skills = ['call_control', 'discovery_depth', 'belief_shifting']
-            row2_skills = ['objection_handling', 'pitch_effectiveness', 'closing_strength']
-            
-            for skill_row in [row1_skills, row2_skills]:
-                cols = st.columns(3)
-                for idx, skill_key in enumerate(skill_row):
-                    skill_data = core_skills.get(skill_key, {})
-                    skill_score = skill_data.get('score', 0)
-                    skill_color = "#10b981" if skill_score >= 8 else "#eab308" if skill_score >= 6 else "#f97316" if skill_score >= 4 else "#ef4444"
-                    emoji, label = skill_labels.get(skill_key, ('📊', skill_key.replace('_', ' ').title()))
-                    
-                    with cols[idx]:
-                        with st.expander(f"{emoji} **{label}** — {skill_score}/10"):
-                            st.markdown(f"**Summary:** {skill_data.get('summary', 'N/A')}")
-                            
-                            evidence = skill_data.get('evidence', [])
-                            if evidence:
-                                st.markdown("**📍 Evidence:**")
-                                for e in evidence:
-                                    st.markdown(f'<div class="transcript-quote">{e}</div>', unsafe_allow_html=True)
-                            
-                            improvement = skill_data.get('improvement', '')
-                            if improvement:
-                                st.markdown(f'<div class="improvement-box"><p style="color:#10b981;margin:0 0 8px;font-weight:600;">💡 To Improve:</p><p style="color:#e5e5e5;margin:0;">{improvement}</p></div>', unsafe_allow_html=True)
-        
-        # Objections Breakdown (NEW)
+        # Objections
         objections = a.get('objections_breakdown', [])
         if objections:
             st.markdown("---")
-            st.markdown("## 🛠️ Objection Handling Breakdown")
-            
+            st.markdown("## 🛠️ Objection Handling")
             for i, obj in enumerate(objections, 1):
-                pre = "✅" if obj.get('pre_handled') else "❌"
-                post = "✅" if obj.get('post_handled') else "❌"
-                eff_score = obj.get('effectiveness_score', 0)
-                eff_color = "#10b981" if eff_score >= 8 else "#eab308" if eff_score >= 6 else "#ef4444"
-                
-                st.markdown(f"""
-                <div style="background:#12121a;border:1px solid rgba(99,102,241,0.2);border-radius:12px;padding:20px;margin:12px 0;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-                        <span style="font-weight:600;color:#fff;">🚧 Objection {i}: {obj.get('objection', '')[:80]}...</span>
-                        <span style="color:{eff_color};font-weight:600;">{eff_score}/10</span>
-                    </div>
-                    <p style="color:#9ca3af;font-size:13px;margin:4px 0;">📍 {obj.get('timestamp', 'N/A')}</p>
-                    <div style="display:flex;gap:16px;margin:12px 0;">
-                        <span style="color:#9ca3af;">Pre-Handled? {pre}</span>
-                        <span style="color:#9ca3af;">Post-Handled? {post}</span>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                if obj.get('what_worked'):
-                    st.markdown(f"**✔️ What Worked:** {obj.get('what_worked')}")
-                if obj.get('what_needed_improvement'):
-                    st.markdown(f"**❌ Needed Improvement:** {obj.get('what_needed_improvement')}")
-                if obj.get('fix_for_next_call'):
-                    st.markdown(f'<div class="improvement-box"><p style="color:#10b981;margin:0 0 8px;font-weight:600;">⚡ Fix for Next Call:</p><p style="color:#e5e5e5;margin:0;font-style:italic;">"{obj.get("fix_for_next_call")}"</p></div>', unsafe_allow_html=True)
+                with st.expander(f"Objection {i}: {obj.get('objection', '')[:60]}... ({obj.get('effectiveness_score', 0)}/10)"):
+                    st.markdown(f"Pre-handled: {'✅' if obj.get('pre_handled') else '❌'} | Post-handled: {'✅' if obj.get('post_handled') else '❌'}")
+                    if obj.get('what_worked'): st.markdown(f"✅ **What Worked:** {obj.get('what_worked')}")
+                    if obj.get('what_needed_improvement'): st.markdown(f"❌ **Needed Improvement:** {obj.get('what_needed_improvement')}")
+                    if obj.get('fix_for_next_call'):
+                        st.markdown(f'<div class="improvement-box"><p style="color:#10b981;margin:0 0 8px;font-weight:600;">⚡ Fix for Next Call:</p><p style="color:#e5e5e5;margin:0;font-style:italic;">"{obj.get("fix_for_next_call")}"</p></div>', unsafe_allow_html=True)
         
+        # Deal Insights
         st.markdown("---")
         st.markdown("## 💼 Deal Insights")
-        
         ins = a.get('deal_insights', {})
         c1, c2, c3 = st.columns(3)
         with c1:
             prob = ins.get('deal_probability', 'Unknown')
             pc = "#10b981" if prob == "High" else "#eab308" if prob == "Medium" else "#ef4444"
-            st.markdown(f"<div style='background:#12121a;border-radius:12px;padding:20px;text-align:center;'><p style='color:#9ca3af;margin:0;font-size:12px;'>DEAL PROBABILITY</p><p style='color:{pc};font-size:28px;font-weight:bold;margin:8px 0;'>{prob}</p><p style='color:#6b7280;font-size:11px;'>{ins.get('deal_probability_reasoning', '')[:80]}...</p></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='background:#1f1f1f;border-radius:12px;padding:20px;text-align:center;'><p style='color:#9ca3af;margin:0;font-size:12px;'>DEAL PROBABILITY</p><p style='color:{pc};font-size:28px;font-weight:bold;margin:8px 0;'>{prob}</p></div>", unsafe_allow_html=True)
         with c2:
             st.markdown("**🟢 Buying Signals**")
             for s in ins.get('buying_signals', []): st.markdown(f"• {s}")
@@ -1144,39 +1031,53 @@ elif st.session_state.get('analysis_result'):
         st.markdown("#### 📋 Suggested Next Steps")
         for s in ins.get('next_steps_suggested', []): st.markdown(f"- [ ] {s}")
         
-        # Final Takeaways (NEW)
+        # Final Takeaways
         takeaways = a.get('final_takeaways', {})
         if takeaways:
             st.markdown("---")
             st.markdown("## 🚀 Final Takeaways")
-            
             c1, c2, c3 = st.columns(3)
             with c1:
-                st.markdown(f"""
-                <div style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:12px;padding:16px;height:100%;">
+                st.markdown(f"""<div style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:12px;padding:16px;">
                     <p style="color:#10b981;font-weight:600;margin:0 0 8px;">🔥 Biggest Strength</p>
                     <p style="color:#e5e5e5;margin:0;font-size:14px;">{takeaways.get('biggest_strength', 'N/A')}</p>
-                </div>
-                """, unsafe_allow_html=True)
+                </div>""", unsafe_allow_html=True)
             with c2:
-                st.markdown(f"""
-                <div style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:12px;padding:16px;height:100%;">
+                st.markdown(f"""<div style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:12px;padding:16px;">
                     <p style="color:#ef4444;font-weight:600;margin:0 0 8px;">⚠️ Biggest Weakness</p>
                     <p style="color:#e5e5e5;margin:0;font-size:14px;">{takeaways.get('biggest_weakness', 'N/A')}</p>
-                </div>
-                """, unsafe_allow_html=True)
+                </div>""", unsafe_allow_html=True)
             with c3:
-                st.markdown(f"""
-                <div style="background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.3);border-radius:12px;padding:16px;height:100%;">
+                st.markdown(f"""<div style="background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.3);border-radius:12px;padding:16px;">
                     <p style="color:#6366f1;font-weight:600;margin:0 0 8px;">🎯 Game-Changer</p>
                     <p style="color:#e5e5e5;margin:0;font-size:14px;">{takeaways.get('game_changer_for_next_call', 'N/A')}</p>
-                </div>
-                """, unsafe_allow_html=True)
+                </div>""", unsafe_allow_html=True)
         
+        # Coaching Summary
         st.markdown("---")
         st.markdown("## 🎓 Coaching Summary")
         st.markdown(f"<div style='background:linear-gradient(135deg,rgba(99,102,241,0.1),rgba(139,92,246,0.1));border-radius:12px;padding:24px;border-left:4px solid #6366f1;'>{a.get('coaching_summary', '')}</div>", unsafe_allow_html=True)
         
+        # Follow-up Email Generator
+        st.markdown("---")
+        st.markdown("## 📧 Follow-up Email Generator")
+        
+        fe_col1, fe_col2 = st.columns([2, 1])
+        with fe_col1:
+            email_prompt = st.text_area("What do you want to achieve with this email?", placeholder="e.g., 'Schedule the demo we discussed' or 'Send the proposal with pricing'", height=80, key="gen_email_prompt")
+        with fe_col2:
+            email_tone = st.selectbox("Tone:", options=list(EMAIL_TONES.keys()), format_func=lambda x: EMAIL_TONES[x]['name'], key="gen_email_tone")
+        
+        if st.button("✉️ Generate Follow-up Email", use_container_width=True, key="gen_email_btn"):
+            with st.spinner("Generating email..."):
+                st.session_state.followup_email = generate_followup_email(a, email_tone, email_prompt, mode="general")
+        
+        if st.session_state.followup_email:
+            st.markdown("#### Generated Email:")
+            st.code(st.session_state.followup_email, language=None)
+            st.download_button("📥 Copy Email", st.session_state.followup_email, "followup_email.txt", use_container_width=True)
+        
+        # Downloads
         st.markdown("---")
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -1188,62 +1089,43 @@ elif st.session_state.get('analysis_result'):
         with col3:
             st.download_button("📥 JSON", json.dumps(a, indent=2), "sales_analysis.json", use_container_width=True)
         
-        # Feedback Section (NEW)
+        # Feedback
         st.markdown("---")
         st.markdown("### 💬 Rate This Analysis")
-        
         if st.session_state.feedback_given:
             st.success("Thanks for your feedback! 🙏")
         else:
-            st.caption("Your feedback helps improve our AI analysis")
-            
-            fb_col1, fb_col2, fb_col3 = st.columns([1, 1, 3])
-            
+            fb_col1, fb_col2, _ = st.columns([1, 1, 3])
             with fb_col1:
-                if st.button("👍 Helpful", use_container_width=True, key="thumbs_up"):
+                if st.button("👍 Helpful", use_container_width=True):
                     if submit_analysis_feedback(a, "thumbs_up"):
                         st.session_state.feedback_given = True
                         st.rerun()
-            
             with fb_col2:
-                if st.button("👎 Not Helpful", use_container_width=True, key="thumbs_down"):
+                if st.button("👎 Not Helpful", use_container_width=True):
                     st.session_state.show_feedback_reason = True
             
             if st.session_state.get('show_feedback_reason'):
-                reason_options = FEEDBACK_REASONS["thumbs_down"]
-                selected_reason = st.radio(
-                    "What went wrong?",
-                    options=[r[0] for r in reason_options],
-                    format_func=lambda x: dict(reason_options)[x],
-                    label_visibility="collapsed"
-                )
-                comment = st.text_input("Details (optional):", placeholder="e.g., 'Missed the pricing objection at 12:30'")
-                
-                sub_col1, sub_col2 = st.columns(2)
-                with sub_col1:
-                    if st.button("Submit Feedback", type="primary", use_container_width=True):
-                        if submit_analysis_feedback(a, "thumbs_down", selected_reason, comment):
-                            st.session_state.feedback_given = True
-                            st.session_state.show_feedback_reason = False
-                            st.rerun()
-                with sub_col2:
-                    if st.button("Cancel", use_container_width=True):
-                        st.session_state.show_feedback_reason = False
-                        st.rerun()
+                reason = st.selectbox("What went wrong?", [r[1] for r in FEEDBACK_REASONS["thumbs_down"]])
+                if st.button("Submit Feedback"):
+                    submit_analysis_feedback(a, "thumbs_down", reason)
+                    st.session_state.feedback_given = True
+                    st.session_state.show_feedback_reason = False
+                    st.rerun()
         
-        # New Analysis Button at bottom
         st.markdown("---")
         if st.button("🔄 Analyze Another Call", use_container_width=True):
             st.session_state.analysis_result = None
             st.session_state.feedback_given = False
+            st.session_state.followup_email = None
             st.rerun()
-        
+    
     except Exception as e:
         st.error(f"Parse error: {e}")
         st.text(st.session_state.analysis_result)
 
 else:
-    # Input Form (Single Screen)
+    # General Sales Input Form
     st.markdown("### 📞 Call Details")
     
     col1, col2 = st.columns(2)
@@ -1264,81 +1146,54 @@ else:
             deal_size = st.text_input("Deal Size", placeholder="$50,000")
         with c2:
             stage = st.selectbox("Sales Stage", ["Discovery", "Qualification", "Demo", "Proposal", "Negotiation", "Closed"])
+        st.markdown('</div>', unsafe_allow_html=True)
         
-        notes = st.text_area("Notes/Questions (optional)", height=80, placeholder="Any specific areas you want analyzed?")
+        st.markdown('<div class="input-section">', unsafe_allow_html=True)
+        st.markdown("**Context (Optional)**")
+        your_website = st.text_input("Your Website", placeholder="https://yourcompany.com - we'll analyze your hero/value prop")
+        lead_website = st.text_input("Lead's Website", placeholder="https://leadcompany.com")
+        lead_linkedin = st.text_input("Lead's LinkedIn", placeholder="https://linkedin.com/in/lead")
+        notes = st.text_area("Notes/Questions", height=68, placeholder="Any specific areas you want analyzed?")
         st.markdown('</div>', unsafe_allow_html=True)
     
     with col2:
         st.markdown('<div class="input-section">', unsafe_allow_html=True)
         st.markdown("**Call Recording / Transcript**")
-        
-        input_method = st.radio("Input Method:", ["📝 Paste Transcript", "📁 Upload File"], horizontal=True)
+        # Upload as default
+        input_method = st.radio("Input Method:", ["📁 Upload File", "📝 Paste Transcript"], horizontal=True)
         
         transcript = ""
-        
-        if input_method == "📝 Paste Transcript":
-            transcript = st.text_area(
-                "Paste your transcript here:",
-                height=200,
-                placeholder="Salesperson: Hi John, thanks for taking the time today...\nProspect: Of course, happy to chat...\n\nPaste the full conversation transcript here."
-            )
-        else:
-            uploaded_file = st.file_uploader(
-                "Upload recording or transcript",
-                type=['txt', 'pdf', 'docx', 'doc', 'vtt', 'srt', 'mp3', 'wav', 'm4a', 'mp4', 'webm'],
-                help="Supports: TXT, PDF, DOCX, VTT, SRT, MP3, WAV, M4A, MP4, WebM"
-            )
+        if input_method == "📁 Upload File":
+            uploaded_file = st.file_uploader("Upload recording or transcript", type=['txt', 'pdf', 'docx', 'doc', 'vtt', 'srt'], help="Supports: TXT, PDF, DOCX, VTT, SRT")
             if uploaded_file:
                 with st.spinner(f"Processing {uploaded_file.name}..."):
                     transcript = extract_text_from_file(uploaded_file)
-                
                 if transcript and not transcript.startswith("["):
                     st.success(f"✅ Loaded: {uploaded_file.name} ({len(transcript):,} characters)")
                     with st.expander("Preview transcript"):
                         st.text(transcript[:2000] + ("..." if len(transcript) > 2000 else ""))
-                else:
-                    st.warning(transcript)
-                    st.info("💡 If upload fails, try pasting the transcript directly instead.")
-        
+        else:
+            transcript = st.text_area("Paste your transcript here:", height=200, placeholder="Salesperson: Hi John, thanks for taking the time today...\nProspect: Of course, happy to chat...")
         st.markdown('</div>', unsafe_allow_html=True)
         
         # Analysis Settings
         st.markdown('<div class="input-section">', unsafe_allow_html=True)
         st.markdown("**⚙️ Analysis Settings**")
         
-        # Coach Persona
         persona_options = {v["name"]: k for k, v in COACH_PERSONAS.items()}
-        selected_persona_name = st.selectbox(
-            "Coach Style:",
-            options=list(persona_options.keys()),
-            index=1,  # Default to Balanced
-            help="Different coaching styles for different needs"
-        )
+        selected_persona_name = st.selectbox("Coach Style:", options=list(persona_options.keys()), index=1)
         selected_persona = persona_options[selected_persona_name]
         st.caption(COACH_PERSONAS[selected_persona]["description"])
         
-        # Rigor Level
         rigor_options = {v["name"]: k for k, v in RIGOR_LEVELS.items()}
-        selected_rigor_name = st.select_slider(
-            "Analysis Depth:",
-            options=list(rigor_options.keys()),
-            value="⚖️ Full Analysis"
-        )
+        selected_rigor_name = st.select_slider("Analysis Depth:", options=list(rigor_options.keys()), value="⚖️ Full Analysis")
         selected_rigor = rigor_options[selected_rigor_name]
         
-        # Key Concerns
-        key_concerns = st.text_area(
-            "Specific concerns (optional):",
-            height=68,
-            placeholder="e.g., 'Did they handle the pricing objection well?' or 'Watch for signs of multi-threading'"
-        )
-        
+        key_concerns = st.text_area("Specific concerns to analyze:", height=68, placeholder="e.g., 'Did they handle the pricing objection well?' or 'Watch for signs of multi-threading'")
         st.markdown('</div>', unsafe_allow_html=True)
     
-    # Check trial limits
+    # Trial limits
     trial_allowed, trial_usage, trial_limit = check_trial_limit("sales", limit=TRIAL_LIMITS.get("sales", 5))
-    
-    # Show trial usage indicator for trial users
     user_plan = st.session_state.get('user_plan', 'free')
     if user_plan in ['trial', '7_day_trial', '7-day-trial', 'free_trial']:
         remaining = trial_limit - trial_usage
@@ -1349,56 +1204,31 @@ else:
     
     # Analyze Button
     st.markdown("---")
-    
-    if not trial_allowed:
-        # Show upgrade prompt instead of analyze button
-        st.markdown("""
-        <div style="background: linear-gradient(135deg, rgba(239,68,68,0.1), rgba(249,115,22,0.1)); 
-                    border: 1px solid rgba(239,68,68,0.3); border-radius: 12px; padding: 24px; text-align: center;">
-            <h3 style="color: #ef4444; margin: 0 0 12px;">🔒 Trial Limit Reached</h3>
-            <p style="color: #e5e5e5; margin: 0 0 16px;">
-                You've used all <strong>5 free analyses</strong> in your trial.<br>
-                Upgrade to continue analyzing sales calls with AI coaching.
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            st.link_button("⬆️ Upgrade Now", "https://sharphuman.com/pricing", type="primary", use_container_width=True)
-        
-        st.markdown("")
-        st.caption("Questions? Contact us at support@sharphuman.com")
-    
-    elif st.button("🚀 Analyze Call", type="primary", use_container_width=True):
+    if st.button("🚀 Analyze Call", type="primary", use_container_width=True, disabled=not trial_allowed):
         if not transcript or len(transcript.strip()) < 100:
-            st.warning("Please provide a transcript (paste or upload). Minimum 100 characters required.")
+            st.warning("Please provide a transcript (minimum 100 characters)")
         else:
-            # Store names for later use
+            st.session_state.working_on = f"Analyzing as {selected_persona_name}..."
             st.session_state.prospect_name = prospect_name
-            st.session_state.company_name = company_name
-            st.session_state.feedback_given = False
             
-            # Show immediate spinner
-            with st.spinner(f"🔄 Analyzing call as {selected_persona_name}... This takes 20-40 seconds."):
-                st.session_state.working_on = f"Analyzing as {selected_persona_name}..."
-                result, _ = analyze_call(
-                    call_type, prospect_name, company_name, deal_size, stage, notes, transcript,
+            with st.spinner("🔄 Analyzing your call... This takes 30-60 seconds"):
+                result, tokens = analyze_call(
+                    transcript=transcript,
+                    call_type=call_type,
+                    prospect_name=prospect_name,
+                    company=company_name,
+                    deal_size=deal_size,
+                    stage=stage,
+                    notes=notes,
                     persona=selected_persona,
                     rigor=selected_rigor,
-                    key_concerns=key_concerns
+                    concerns=key_concerns,
+                    your_website=your_website,
+                    lead_website=lead_website,
+                    lead_linkedin=lead_linkedin
                 )
-                st.session_state.working_on = None
-                
-                # Log usage for trial tracking
-                if st.session_state.user:
-                    log_usage(
-                        st.session_state.user.get("id"),
-                        st.session_state.session_token,
-                        "sales",
-                        "analyze",
-                        tokens_used=20000  # Approximate
-                    )
+            
+            st.session_state.working_on = None
             
             if not str(result).startswith("Error"):
                 st.session_state.analysis_result = result
@@ -1406,7 +1236,7 @@ else:
             else:
                 st.error(result)
 
-# Feedback
+# Feedback widget
 st.markdown('<div style="height:60px;"></div>', unsafe_allow_html=True)
 _, _, _, fb = st.columns([4, 1, 1, 1])
 with fb:
