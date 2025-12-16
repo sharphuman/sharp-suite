@@ -38,7 +38,7 @@ except ImportError:
     GOD_PASSWORD = "G0DHum@n101!!!"
     ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
     APP_URLS = {
-        "portal": "https://portal.sharphuman.com", "jd": "https://jd.sharphuman.com",
+        "portal": "https://demo.sharphuman.com", "jd": "https://jd.sharphuman.com",
         "screen": "https://screen.sharphuman.com", "interview": "https://interview.sharphuman.com",
         "outreach": "https://outreach.sharphuman.com", "content": "https://content.sharphuman.com",
         "sales": "https://sales.sharphuman.com", "admin": "https://admin.sharphuman.com",
