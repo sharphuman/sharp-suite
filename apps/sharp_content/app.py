@@ -337,23 +337,33 @@ if not st.session_state.authenticated:
 if st.session_state.working_on:
     st.markdown(f'<div class="status-badge">{st.session_state.working_on}</div>', unsafe_allow_html=True)
 
-# Sidebar
-with st.sidebar:
-    st.markdown(f"""<div class="user-card"><p style="color:#9ca3af;margin:0;font-size:12px;">Logged in as</p><p style="color:#fff;margin:4px 0;font-weight:600;">{get_user_email()}</p><p style="color:#6366f1;margin:0;font-size:12px;text-transform:uppercase;">{st.session_state.get('user_plan','free')} plan</p></div>""", unsafe_allow_html=True)
-    st.markdown("**Apps**")
-    for key, label in [("portal", "🏠 Portal"), ("jd", "📝 JD Writer"), ("screen", "🔍 CV Screener"), ("interview", "🎯 Interview"), ("outreach", "🚀 Outreach"), ("content", "✍️ Content"), ("sales", "💰 Sales")]:
-        if key == "content":
-            st.markdown(f"<div style='background:linear-gradient(135deg,#6366f1,#8b5cf6);padding:10px 16px;border-radius:8px;text-align:center;margin:4px 0;color:white;font-weight:600;'>{label} ◀</div>", unsafe_allow_html=True)
-        else:
-            st.link_button(label, build_app_url(key), use_container_width=True)
-    if st.session_state.get("is_god"):
+# Use shared_ui sidebar and top banner
+if USING_SHARED:
+    render_top_banner(show_cta=True, cta_text="Book a Demo")
+    render_sidebar(
+        current_app="content",
+        user_email=get_user_email(),
+        user_plan=st.session_state.get('user_plan', 'free'),
+        session_token=st.session_state.get('session_token', '')
+    )
+else:
+    # Fallback sidebar
+    with st.sidebar:
+        st.markdown(f"""<div class="user-card"><p style="color:#9ca3af;margin:0;font-size:12px;">Logged in as</p><p style="color:#fff;margin:4px 0;font-weight:600;">{get_user_email()}</p><p style="color:#6366f1;margin:0;font-size:12px;text-transform:uppercase;">{st.session_state.get('user_plan','free')} plan</p></div>""", unsafe_allow_html=True)
+        st.markdown("**Apps**")
+        for key, label in [("portal", "🏠 Portal"), ("jd", "📝 JD Writer"), ("screen", "🔍 CV Screener"), ("interview", "🎯 Interview"), ("outreach", "🚀 Outreach"), ("content", "✍️ Content"), ("sales", "💰 Sales")]:
+            if key == "content":
+                st.markdown(f"<div style='background:#db2777;padding:10px 16px;border-radius:8px;text-align:center;margin:4px 0;color:white;font-weight:600;'>{label} ◀</div>", unsafe_allow_html=True)
+            else:
+                st.link_button(label, build_app_url(key), use_container_width=True)
+        if st.session_state.get("is_god"):
+            st.markdown("---")
+            st.link_button("⚙️ Admin", build_app_url("admin"), use_container_width=True)
         st.markdown("---")
-        st.link_button("⚙️ Admin", build_app_url("admin"), use_container_width=True)
-    st.markdown("---")
-    if st.button("🚪 Logout", use_container_width=True):
-        for k in list(st.session_state.keys()):
-            del st.session_state[k]
-        st.rerun()
+        if st.button("🚪 Logout", use_container_width=True):
+            for k in list(st.session_state.keys()):
+                del st.session_state[k]
+            st.rerun()
 
 # Header
 st.markdown("""<div style="display:flex;align-items:center;gap:16px;padding:20px 0;border-bottom:1px solid rgba(99,102,241,0.2);margin-bottom:20px;"><img src="https://sharphuman.com/logo1-3.png" style="width:50px;"><div><h1 style="margin:0;font-size:28px;">Sharp Content</h1><p style="color:#9ca3af;margin:0;">AI-Powered Content Engine</p></div></div>""", unsafe_allow_html=True)
