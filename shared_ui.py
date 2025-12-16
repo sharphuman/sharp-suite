@@ -520,6 +520,28 @@ def get_global_css():
     footer {{visibility: hidden;}}
     header {{visibility: hidden;}}
     
+    /* ========== HIDE MATERIAL ICONS TEXT FALLBACK ========== */
+    /* This hides text like "keyboard_double_arrow_left" that appears when icons don't load */
+    [data-testid="collapsedControl"] {{
+        display: none !important;
+    }}
+    
+    /* Hide any element containing material icon text names */
+    .material-symbols-outlined,
+    [class*="material-icons"] {{
+        font-size: 0 !important;
+    }}
+    
+    /* Target the sidebar collapse button specifically */
+    button[kind="header"] {{
+        display: none !important;
+    }}
+    
+    /* Hide the collapse control text */
+    [data-testid="stSidebarCollapseButton"] {{
+        display: none !important;
+    }}
+    
     </style>
     """
 
@@ -585,36 +607,27 @@ def render_top_banner(show_cta: bool = True, cta_text: str = "Book a Demo", cta_
     Call this at the very top of your app, right after apply_global_styles().
     
     Layout:
-        Left side: Bespoke Services (pink), Blog (pink), sharphuman.com (pink)
-        Right side: Book a Demo (blue outline), Book a Free AI Consultation (blue outline)
+        Left side: Bespoke Services (pink), Blog (pink), Book a Demo (blue outline)
+        Right side: sharphuman.com (pink), Book a Free AI Consultation (blue outline)
     
     Args:
-        show_cta: Whether to show the CTA buttons on right side
+        show_cta: Whether to show the CTA buttons
         cta_text: Text for the first CTA button (default: "Book a Demo")
         cta_url: URL for CTA (defaults to calendly link)
     """
     cta_link = cta_url or EXTERNAL_LINKS["calendly"]
     
-    # Build right side CTA buttons
-    cta_html = ""
-    if show_cta:
-        cta_html = f'''
-            <a href="{cta_link}" target="_blank" class="top-banner-btn-outline">{cta_text}</a>
-            <a href="{EXTERNAL_LINKS["calendly"]}" target="_blank" class="top-banner-btn-outline">Book a Free AI Consultation</a>
-        '''
-    
-    banner_html = f"""
-    <div class="top-banner">
+    banner_html = f'''<div class="top-banner">
         <div class="top-banner-links">
             <a href="{EXTERNAL_LINKS["bespoke"]}" target="_blank" class="top-banner-btn-pink">Bespoke Services</a>
             <a href="{EXTERNAL_LINKS["blog"]}" target="_blank" class="top-banner-btn-pink">Blog</a>
-            <a href="{EXTERNAL_LINKS["website"]}" target="_blank" class="top-banner-btn-pink">sharphuman.com</a>
+            <a href="{cta_link}" target="_blank" class="top-banner-btn-outline">{cta_text}</a>
         </div>
         <div class="top-banner-right">
-            {cta_html}
+            <a href="{EXTERNAL_LINKS["website"]}" target="_blank" class="top-banner-btn-pink">sharphuman.com</a>
+            <a href="{EXTERNAL_LINKS["calendly"]}" target="_blank" class="top-banner-btn-outline">Book a Free AI Consultation</a>
         </div>
-    </div>
-    """
+    </div>'''
     st.markdown(banner_html, unsafe_allow_html=True)
 
 def render_promo_banner(
