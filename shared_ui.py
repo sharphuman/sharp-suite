@@ -1,5 +1,5 @@
 """
-Sharp Suite - Shared UI Components & Styles
+Sharp Suite - Shared UI Components & TStyles
 =============================================
 Central source of truth for all UI elements.
 Import this in every app for consistent look & feel.
