@@ -616,7 +616,7 @@ def call_claude(prompt, max_tokens=8000, action="interview"):
 
 def generate_questions(job_title, requirements, stage, duration, focus_areas, cv_text="", exclude_illegal=True, style="standard", difficulty="mid", company_context=""):
     """
-    Generate interview questions with customizable style and difficulty.
+    Generate interview questions with expected answers, CV verification questions, and JD fit assessment.
     
     Args:
         style: Key from QUESTION_STYLES
@@ -636,11 +636,27 @@ Tailor questions to probe for fit with this environment:
 {company_context}
 """
 
-    prompt = f"""You are an expert interviewer. Generate interview questions for:
+    cv_section = ""
+    cv_verification_instruction = ""
+    if cv_text and cv_text.strip():
+        cv_section = f"""
+## CANDIDATE CV
+{cv_text[:4000]}
+"""
+        cv_verification_instruction = """
+## CV VERIFICATION QUESTIONS (CRITICAL)
+Generate 2-3 specific questions to VERIFY claims made in the CV:
+- If they claim "Led team of 10", ask for specific names, challenges, outcomes
+- If they claim a technology, ask for specific implementation details
+- If there are gaps or vague descriptions, probe for specifics
+- These questions should reveal if the candidate truly did what they claim
+"""
+
+    prompt = f"""You are an expert interviewer creating a comprehensive interview guide. Generate questions WITH expected answers.
 
 ## ROLE: {job_title}
 
-## REQUIREMENTS:
+## JOB REQUIREMENTS (Use these to assess FIT):
 {requirements[:4000]}
 
 ## INTERVIEW STAGE: {stage}
@@ -653,53 +669,104 @@ Tailor questions to probe for fit with this environment:
 ## DIFFICULTY LEVEL: {difficulty_config['name']}
 {difficulty_config['prompt_modifier']}
 {company_section}
-{f"## CANDIDATE CV (for tailored questions):{chr(10)}{cv_text[:3000]}" if cv_text else ""}
+{cv_section}
+{cv_verification_instruction}
 
 {"IMPORTANT: Exclude any questions that could be considered discriminatory (age, religion, family status, etc.)" if exclude_illegal else ""}
 
-Generate a structured interview guide with:
+## QUESTION TYPES TO INCLUDE:
+
+1. **JD FIT QUESTIONS**: Questions that directly assess if the candidate meets the job requirements
+2. **CV VERIFICATION QUESTIONS**: Questions to verify specific claims from their CV (if provided)
+3. **BEHAVIORAL QUESTIONS**: Past behavior predicts future behavior
+4. **TECHNICAL/SKILL QUESTIONS**: Assess core competencies for the role
+
+Generate a structured interview guide:
 
 ```json
 {{
     "settings": {{
         "style": "{style_config['name']}",
-        "difficulty": "{difficulty_config['name']}"
+        "difficulty": "{difficulty_config['name']}",
+        "duration_minutes": {duration},
+        "total_questions": <number>
     }},
     "opening": {{
         "icebreaker": "<warm-up question>",
-        "role_intro": "<question about their understanding of the role>"
+        "icebreaker_purpose": "<why this opens the conversation well>",
+        "role_intro": "<question about their understanding of the role>",
+        "expected_good_answer": "<what a prepared candidate would say>"
     }},
-    "questions": [
+    "jd_fit_questions": [
         {{
-            "category": "<focus area>",
+            "requirement_being_tested": "<specific requirement from JD>",
             "question": "<the interview question>",
-            "follow_ups": ["<follow-up 1>", "<follow-up 2>"],
-            "what_to_look_for": "<what a good answer includes>",
-            "red_flags": "<warning signs in answers>",
+            "expected_good_answer": "<detailed answer showing they meet the requirement>",
+            "expected_poor_answer": "<answer that would indicate they don't meet it>",
+            "follow_ups": ["<dig deeper>", "<probe for specifics>"],
+            "scoring_guide": {{
+                "excellent": "<what 9-10 looks like>",
+                "acceptable": "<what 6-8 looks like>",
+                "poor": "<what 1-5 looks like>"
+            }},
+            "time_estimate": "<minutes>"
+        }}
+    ],
+    "cv_verification_questions": [
+        {{
+            "cv_claim_being_verified": "<specific claim from CV>",
+            "question": "<question to verify this claim>",
+            "expected_truthful_answer": "<what someone who really did this would say>",
+            "red_flags": ["<signs they're exaggerating>", "<vague responses>"],
+            "follow_up_if_suspicious": "<how to probe deeper>",
+            "time_estimate": "<minutes>"
+        }}
+    ],
+    "behavioral_questions": [
+        {{
+            "competency": "<what this assesses>",
+            "question": "<STAR-format behavioral question>",
+            "expected_good_answer": {{
+                "situation": "<what context they should describe>",
+                "task": "<what responsibility they should explain>",
+                "action": "<specific actions they should detail>",
+                "result": "<measurable outcomes they should share>"
+            }},
+            "red_flags": ["<warning signs>"],
             "time_estimate": "<minutes>"
         }}
     ],
     "closing": {{
         "candidate_questions": "<invite their questions>",
+        "what_good_candidates_ask": ["<insightful question>", "<shows research>"],
         "next_steps": "<explain process>",
         "timeline": "<when they'll hear back>"
     }},
-    "evaluation_criteria": [
+    "evaluation_scorecard": [
         {{
             "criterion": "<what to evaluate>",
             "weight": "<High/Medium/Low>",
-            "indicators": ["<positive indicator>", "<negative indicator>"]
+            "must_have": <true/false>,
+            "questions_that_assess_this": ["<question reference>"],
+            "scoring_notes": "<how to score this>"
         }}
-    ]
+    ],
+    "overall_recommendation_guide": {{
+        "strong_hire_signals": ["<what indicates exceptional candidate>"],
+        "hire_signals": ["<what indicates good candidate>"],
+        "no_hire_signals": ["<what indicates poor fit>"],
+        "red_flags_to_watch": ["<immediate disqualifiers>"]
+    }}
 }}
 ```
 
-Generate {max(3, duration // 10)} questions appropriate for {duration} minutes."""
+Generate {max(4, duration // 8)} total questions across all categories, appropriate for {duration} minutes.
+Ensure every question has a detailed expected answer so interviewers know what "good" looks like."""
 
-    return call_claude(prompt, max_tokens=4000, action="generate_questions")
+    return call_claude(prompt, max_tokens=6000, action="generate_questions")
 
 
-def analyze_recruiter_screen(transcript, call_type="candidate_screen", candidate_role="", company_context="", key_concerns=""):
+def analyze_recruiter_screen(transcript, call_type="candidate_screen", candidate_role="", company_context="", key_concerns="", jd_text=""):
     """
     Analyze a recruiter's performance on a call (screening, intake, etc.)
     
@@ -709,6 +776,7 @@ def analyze_recruiter_screen(transcript, call_type="candidate_screen", candidate
         candidate_role: Role being recruited for (if applicable)
         company_context: Context about the company/client
         key_concerns: Specific areas to focus on
+        jd_text: Job description to analyze candidate fit against
     """
     
     # Call type specific frameworks
@@ -828,6 +896,28 @@ Evaluate:
 {key_concerns}
 """
 
+    # JD fit analysis section
+    jd_section = ""
+    jd_fit_output = ""
+    if jd_text and jd_text.strip():
+        jd_section = f"""
+## JOB DESCRIPTION (Analyze candidate fit against these requirements)
+{jd_text[:4000]}
+
+IMPORTANT: In addition to evaluating the recruiter's performance, also assess:
+1. Did the recruiter verify the candidate meets the key requirements?
+2. What requirements were discussed vs missed?
+3. Based on the call, does the candidate appear to be a fit for this role?
+"""
+        jd_fit_output = """
+    "jd_fit_assessment": {
+        "requirements_verified": [{"requirement": "<from JD>", "status": "<Met|Not Met|Unclear>", "evidence": "<what was said>"}],
+        "requirements_not_discussed": ["<requirement from JD that wasn't covered>"],
+        "overall_fit": "<Strong Fit|Potential Fit|Poor Fit|Insufficient Info>",
+        "fit_summary": "<1-2 sentences on candidate-role fit based on this call>",
+        "recruiter_missed_opportunities": ["<questions they should have asked to assess fit>"]
+    },"""
+
     prompt = f"""You are an expert recruiting trainer analyzing a recruiter's performance on a {call_config['name']}.
 
 ## CALL CONTEXT
@@ -839,6 +929,7 @@ Evaluate:
 ## EVALUATION FRAMEWORK
 {skills_desc}
 {concerns_section}
+{jd_section}
 
 ## TRANSCRIPT
 {transcript[:20000]}
@@ -853,6 +944,7 @@ Analyze the recruiter's performance thoroughly. For each skill area, provide spe
 3. Focus on the RECRUITER's performance, not the candidate
 4. Provide specific "Fix for Next Call" scripts for weak areas
 5. Be constructive but honest - this is for coaching
+{f"6. Assess candidate fit against the JD requirements provided" if jd_text else ""}
 
 Return your analysis in this JSON format:
 ```json
@@ -877,7 +969,14 @@ Return your analysis in this JSON format:
         "motivation": "<what was gathered or MISSED>",
         "competing_offers": "<what was gathered or MISSED>",
         "red_flags_identified": ["<any red flags the recruiter caught or missed>"]
-    }},
+    }},{jd_fit_output}
+    "concerns_addressed": [
+        {{
+            "concern": "<the specific concern raised>",
+            "finding": "<what the analysis found>",
+            "evidence": "<quote or evidence from transcript>"
+        }}
+    ],
     "recruiter_strengths": ["<top strength>", "<another strength>"],
     "priority_improvements": ["<most important thing to work on>", "<second priority>"],
     "client_readiness": {{
@@ -1755,7 +1854,7 @@ else:
     .input-card { background: #12121a; border: 1px solid rgba(99,102,241,0.2); border-radius: 12px; padding: 20px; margin: 12px 0; }
     /* Working Status Badge with Logo Spinner */
     .status-badge { position: fixed; top: 70px; right: 20px; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; padding: 12px 24px 12px 50px; border-radius: 25px; font-weight: 600; z-index: 9999; box-shadow: 0 4px 15px rgba(99,102,241,0.4); }
-    .status-badge::before { content: ''; position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 28px; height: 28px; background: url('https://assets.sharphuman.com/logo_spinner_small_transparent.png') center/contain no-repeat; }
+    .status-badge::before { content: ''; position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 28px; height: 28px; background: url('https://assets.sharphuman.com/logo_spinner_small.gif') center/contain no-repeat; }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
     </style>""", unsafe_allow_html=True)
 
@@ -2604,69 +2703,158 @@ with tab_questions:
                 data = json.loads(m.group(1) if m else result)
                 
                 st.markdown("---")
-                st.markdown("### Interview Guide")
+                st.markdown("### 📋 Interview Guide")
                 
                 # Show settings used
                 settings = data.get('settings', {})
                 if settings:
                     st.markdown(f"""
-                    <div style="display:flex;gap:8px;margin-bottom:16px;">
+                    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
                         <span style="background:rgba(99,102,241,0.2);color:#a5b4fc;padding:4px 10px;border-radius:12px;font-size:11px;">{settings.get('style', '')}</span>
                         <span style="background:rgba(139,92,246,0.2);color:#c4b5fd;padding:4px 10px;border-radius:12px;font-size:11px;">{settings.get('difficulty', '')}</span>
+                        <span style="background:rgba(16,185,129,0.2);color:#6ee7b7;padding:4px 10px;border-radius:12px;font-size:11px;">⏱ {settings.get('duration_minutes', 45)} min</span>
+                        <span style="background:rgba(234,179,8,0.2);color:#fcd34d;padding:4px 10px;border-radius:12px;font-size:11px;">📝 {settings.get('total_questions', 'N/A')} questions</span>
                     </div>
                     """, unsafe_allow_html=True)
                 
                 # Opening
                 opening = data.get('opening', {})
-                st.markdown("#### Opening")
-                st.info(f"**Icebreaker:** {opening.get('icebreaker', 'N/A')}")
-                st.info(f"**Role Intro:** {opening.get('role_intro', 'N/A')}")
+                with st.expander("🎬 **Opening**", expanded=True):
+                    st.markdown(f"**Icebreaker:** {opening.get('icebreaker', 'N/A')}")
+                    if opening.get('icebreaker_purpose'):
+                        st.caption(f"💡 Purpose: {opening.get('icebreaker_purpose')}")
+                    st.markdown("---")
+                    st.markdown(f"**Role Understanding:** {opening.get('role_intro', 'N/A')}")
+                    if opening.get('expected_good_answer'):
+                        st.success(f"✅ **Good Answer:** {opening.get('expected_good_answer')}")
                 
-                # Questions
-                st.markdown("#### Questions")
-                for i, q in enumerate(data.get('questions', []), 1):
-                    category = q.get('category', '')
-                    time_est = q.get('time_estimate', '')
-                    question = q.get('question', '')
-                    look_for = q.get('what_to_look_for', '')
-                    red_flags = q.get('red_flags', '')
-                    
-                    follow_ups_html = ""
-                    if q.get('follow_ups'):
-                        follow_ups_html = "<p style='color:#9ca3af;margin:10px 0 6px;font-weight:600;'>Follow-ups:</p><ul style='margin:0;padding-left:20px;'>"
-                        for f in q.get('follow_ups', []):
-                            follow_ups_html += f"<li style='color:#e5e5e5;margin:4px 0;'>{f}</li>"
-                        follow_ups_html += "</ul>"
-                    
-                    st.markdown(f"""
-                    <details style="background:#12121a;border:1px solid rgba(99,102,241,0.2);border-radius:10px;margin:8px 0;">
-                        <summary style="padding:14px 18px;cursor:pointer;display:flex;align-items:center;gap:8px;">
-                            <span style="background:#6366f1;color:white;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;">Q{i}</span>
-                            <span style="color:#fff;font-weight:600;flex:1;">{category}</span>
-                            <span style="color:#9ca3af;font-size:13px;">⏱ {time_est} min</span>
-                        </summary>
-                        <div style="padding:0 18px 18px;border-top:1px solid rgba(99,102,241,0.1);">
-                            <p style="color:#e5e5e5;margin:12px 0;"><strong style="color:#a5b4fc;">Question:</strong> {question}</p>
-                            {follow_ups_html}
-                            <p style="color:#e5e5e5;margin:10px 0;"><strong style="color:#10b981;">Look for:</strong> {look_for}</p>
-                            <p style="color:#e5e5e5;margin:10px 0;"><strong style="color:#ef4444;">Red flags:</strong> {red_flags}</p>
-                        </div>
-                    </details>
-                    """, unsafe_allow_html=True)
+                # JD Fit Questions
+                jd_questions = data.get('jd_fit_questions', [])
+                if jd_questions:
+                    st.markdown("#### 🎯 JD Fit Questions")
+                    st.caption("These assess if the candidate meets the job requirements")
+                    for i, q in enumerate(jd_questions, 1):
+                        with st.expander(f"**Q{i}: {q.get('requirement_being_tested', 'Requirement')[:50]}...**"):
+                            st.markdown(f"**❓ Question:** {q.get('question', '')}")
+                            st.markdown(f"**⏱ Time:** {q.get('time_estimate', '5')} min")
+                            
+                            if q.get('follow_ups'):
+                                st.markdown("**🔄 Follow-ups:**")
+                                for f in q.get('follow_ups', []):
+                                    st.markdown(f"  → {f}")
+                            
+                            st.markdown("---")
+                            st.success(f"✅ **Good Answer:** {q.get('expected_good_answer', 'N/A')}")
+                            st.error(f"❌ **Poor Answer:** {q.get('expected_poor_answer', 'N/A')}")
+                            
+                            scoring = q.get('scoring_guide', {})
+                            if scoring:
+                                st.markdown("**📊 Scoring Guide:**")
+                                cols = st.columns(3)
+                                with cols[0]:
+                                    st.markdown(f"<div style='background:rgba(16,185,129,0.1);padding:10px;border-radius:8px;'><strong style='color:#10b981;'>9-10</strong><br>{scoring.get('excellent', '')}</div>", unsafe_allow_html=True)
+                                with cols[1]:
+                                    st.markdown(f"<div style='background:rgba(234,179,8,0.1);padding:10px;border-radius:8px;'><strong style='color:#eab308;'>6-8</strong><br>{scoring.get('acceptable', '')}</div>", unsafe_allow_html=True)
+                                with cols[2]:
+                                    st.markdown(f"<div style='background:rgba(239,68,68,0.1);padding:10px;border-radius:8px;'><strong style='color:#ef4444;'>1-5</strong><br>{scoring.get('poor', '')}</div>", unsafe_allow_html=True)
+                
+                # CV Verification Questions
+                cv_questions = data.get('cv_verification_questions', [])
+                if cv_questions:
+                    st.markdown("#### 🔍 CV Verification Questions")
+                    st.caption("These verify specific claims from the candidate's CV")
+                    for i, q in enumerate(cv_questions, 1):
+                        with st.expander(f"**Verify: {q.get('cv_claim_being_verified', 'CV Claim')[:50]}...**"):
+                            st.markdown(f"**❓ Question:** {q.get('question', '')}")
+                            st.success(f"✅ **Truthful Answer:** {q.get('expected_truthful_answer', 'N/A')}")
+                            
+                            if q.get('red_flags'):
+                                st.markdown("**🚩 Red Flags:**")
+                                for rf in q.get('red_flags', []):
+                                    st.markdown(f"  ⚠️ {rf}")
+                            
+                            if q.get('follow_up_if_suspicious'):
+                                st.warning(f"**🔎 If suspicious, ask:** {q.get('follow_up_if_suspicious')}")
+                
+                # Behavioral Questions
+                behavioral = data.get('behavioral_questions', [])
+                if behavioral:
+                    st.markdown("#### 💭 Behavioral Questions")
+                    st.caption("Past behavior predicts future performance (STAR format)")
+                    for i, q in enumerate(behavioral, 1):
+                        with st.expander(f"**{q.get('competency', 'Competency')}**"):
+                            st.markdown(f"**❓ Question:** {q.get('question', '')}")
+                            
+                            expected = q.get('expected_good_answer', {})
+                            if isinstance(expected, dict):
+                                st.markdown("**✅ Expected STAR Answer:**")
+                                st.markdown(f"  • **S**ituation: {expected.get('situation', 'N/A')}")
+                                st.markdown(f"  • **T**ask: {expected.get('task', 'N/A')}")
+                                st.markdown(f"  • **A**ction: {expected.get('action', 'N/A')}")
+                                st.markdown(f"  • **R**esult: {expected.get('result', 'N/A')}")
+                            
+                            if q.get('red_flags'):
+                                st.markdown("**🚩 Red Flags:**")
+                                for rf in q.get('red_flags', []):
+                                    st.markdown(f"  ⚠️ {rf}")
+                
+                # Fallback for old format questions
+                old_questions = data.get('questions', [])
+                if old_questions and not jd_questions and not cv_questions:
+                    st.markdown("#### Questions")
+                    for i, q in enumerate(old_questions, 1):
+                        with st.expander(f"**Q{i}: {q.get('category', '')}** ({q.get('time_estimate', '')} min)"):
+                            st.markdown(f"**Question:** {q.get('question', '')}")
+                            if q.get('follow_ups'):
+                                st.markdown("**Follow-ups:**")
+                                for f in q.get('follow_ups', []):
+                                    st.markdown(f"  → {f}")
+                            st.success(f"**Look for:** {q.get('what_to_look_for', '')}")
+                            st.error(f"**Red flags:** {q.get('red_flags', '')}")
                 
                 # Closing
                 closing = data.get('closing', {})
-                st.markdown("#### Closing")
-                st.info(f"**Candidate Questions:** {closing.get('candidate_questions', 'N/A')}")
-                st.info(f"**Next Steps:** {closing.get('next_steps', 'N/A')}")
+                with st.expander("🎬 **Closing**"):
+                    st.markdown(f"**Invite Questions:** {closing.get('candidate_questions', 'N/A')}")
+                    if closing.get('what_good_candidates_ask'):
+                        st.markdown("**Good candidates typically ask:**")
+                        for q in closing.get('what_good_candidates_ask', []):
+                            st.markdown(f"  💡 {q}")
+                    st.markdown(f"**Next Steps:** {closing.get('next_steps', 'N/A')}")
+                    st.markdown(f"**Timeline:** {closing.get('timeline', 'N/A')}")
                 
-                # Evaluation Criteria
-                if data.get('evaluation_criteria'):
-                    st.markdown("#### Evaluation Criteria")
-                    for ec in data.get('evaluation_criteria', []):
-                        st.markdown(f"- **{ec.get('criterion')}** ({ec.get('weight')})")
+                # Evaluation Scorecard
+                scorecard = data.get('evaluation_scorecard', [])
+                if scorecard:
+                    st.markdown("#### 📊 Evaluation Scorecard")
+                    for ec in scorecard:
+                        must_have = "🔴 MUST HAVE" if ec.get('must_have') else "🟡 Nice to have"
+                        st.markdown(f"**{ec.get('criterion')}** ({ec.get('weight')}) - {must_have}")
+                        if ec.get('scoring_notes'):
+                            st.caption(ec.get('scoring_notes'))
                 
-                st.download_button("📥 Download Guide", json.dumps(data, indent=2), "interview_guide.json", use_container_width=True)
+                # Recommendation Guide
+                rec_guide = data.get('overall_recommendation_guide', {})
+                if rec_guide:
+                    st.markdown("#### 🎯 Recommendation Guide")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.markdown("**🟢 STRONG HIRE signals:**")
+                        for s in rec_guide.get('strong_hire_signals', []):
+                            st.markdown(f"  ✅ {s}")
+                        st.markdown("**🟡 HIRE signals:**")
+                        for s in rec_guide.get('hire_signals', []):
+                            st.markdown(f"  ✓ {s}")
+                    with col2:
+                        st.markdown("**🔴 NO HIRE signals:**")
+                        for s in rec_guide.get('no_hire_signals', []):
+                            st.markdown(f"  ❌ {s}")
+                        st.markdown("**⚠️ Red Flags:**")
+                        for s in rec_guide.get('red_flags_to_watch', []):
+                            st.markdown(f"  🚩 {s}")
+                
+                st.markdown("---")
+                st.download_button("📥 Download Interview Guide", json.dumps(data, indent=2), "interview_guide.json", use_container_width=True)
                 
             except Exception as e:
                 st.error(f"Parse error: {e}")
@@ -2796,6 +2984,62 @@ with tab_coach:
                         for flag in red_flags:
                             st.markdown(f"- {flag}")
                 
+                # JD Fit Assessment (NEW)
+                jd_fit = a.get('jd_fit_assessment', {})
+                if jd_fit:
+                    st.markdown("---")
+                    st.markdown("## 🎯 Candidate-Role Fit Assessment")
+                    
+                    overall_fit = jd_fit.get('overall_fit', 'Unknown')
+                    fit_color = "#10b981" if "Strong" in overall_fit else "#eab308" if "Potential" in overall_fit else "#ef4444"
+                    
+                    st.markdown(f"""
+                    <div style="background:linear-gradient(135deg,rgba(99,102,241,0.1),rgba(139,92,246,0.1));border-radius:12px;padding:20px;margin-bottom:16px;">
+                        <p style="color:#9ca3af;font-size:12px;margin:0;">OVERALL FIT</p>
+                        <p style="color:{fit_color};font-size:24px;font-weight:bold;margin:8px 0;">{overall_fit}</p>
+                        <p style="color:#e5e5e5;margin:0;">{jd_fit.get('fit_summary', '')}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Requirements verified
+                    reqs_verified = jd_fit.get('requirements_verified', [])
+                    if reqs_verified:
+                        st.markdown("**📋 Requirements Discussed:**")
+                        for req in reqs_verified:
+                            status = req.get('status', 'Unknown')
+                            status_icon = "✅" if status == "Met" else "❌" if status == "Not Met" else "❓"
+                            st.markdown(f"{status_icon} **{req.get('requirement', '')}**: {status}")
+                            if req.get('evidence'):
+                                st.caption(f"   Evidence: \"{req.get('evidence')}\"")
+                    
+                    # Requirements not discussed
+                    not_discussed = jd_fit.get('requirements_not_discussed', [])
+                    if not_discussed:
+                        st.warning("**⚠️ Requirements NOT Discussed:**")
+                        for req in not_discussed:
+                            st.markdown(f"- {req}")
+                    
+                    # Missed opportunities
+                    missed = jd_fit.get('recruiter_missed_opportunities', [])
+                    if missed:
+                        st.markdown("**💡 Questions You Should Have Asked:**")
+                        for m in missed:
+                            st.markdown(f"- {m}")
+                
+                # Concerns Addressed (NEW)
+                concerns = a.get('concerns_addressed', [])
+                if concerns:
+                    st.markdown("---")
+                    st.markdown("## 🔍 Your Concerns Addressed")
+                    for concern in concerns:
+                        st.markdown(f"""
+                        <div style="background:#1a1a2e;border:1px solid rgba(99,102,241,0.3);border-radius:12px;padding:16px;margin:12px 0;">
+                            <p style="color:#a5b4fc;font-weight:600;margin:0 0 8px;">❓ {concern.get('concern', '')}</p>
+                            <p style="color:#e5e5e5;margin:0 0 8px;">→ {concern.get('finding', '')}</p>
+                            {f"<p style='color:#9ca3af;font-style:italic;margin:0;font-size:13px;'>Evidence: \"{concern.get('evidence', '')}\"</p>" if concern.get('evidence') else ""}
+                        </div>
+                        """, unsafe_allow_html=True)
+                
                 # Client Readiness
                 client_ready = a.get('client_readiness', {})
                 if client_ready:
@@ -2893,6 +3137,27 @@ with tab_coach:
                 key="recruiter_concerns"
             )
             st.markdown('</div>', unsafe_allow_html=True)
+            
+            # JD Upload for fit analysis
+            st.markdown('<div class="input-card">', unsafe_allow_html=True)
+            st.markdown("**📋 Job Description (optional)**")
+            st.caption("Upload JD to analyze if candidate fits the role requirements")
+            
+            rc_jd_src = st.radio("JD Source:", ["None", "📁 Upload", "📝 Paste"], horizontal=True, key="rc_jd_src")
+            
+            rc_jd_text = ""
+            if rc_jd_src == "📁 Upload":
+                rc_jd_file = st.file_uploader("Upload JD", type=['txt', 'pdf', 'docx'], key="rc_jd_file")
+                if rc_jd_file:
+                    rc_jd_text = extract_text_from_file(rc_jd_file)
+                    if rc_jd_text and not rc_jd_text.startswith("["):
+                        st.success("✅ JD Loaded - Will analyze candidate fit")
+            elif rc_jd_src == "📝 Paste":
+                rc_jd_text = st.text_area("Paste JD:", height=100, key="rc_jd_paste", placeholder="Paste job requirements here...")
+                if rc_jd_text:
+                    st.success("✅ JD provided - Will analyze candidate fit")
+            
+            st.markdown('</div>', unsafe_allow_html=True)
         
         with col2:
             st.markdown('<div class="input-card">', unsafe_allow_html=True)
@@ -2910,7 +3175,7 @@ with tab_coach:
             if input_method == "📝 Paste Transcript":
                 recruiter_transcript = st.text_area(
                     "Paste your transcript:",
-                    height=250,
+                    height=300,
                     placeholder="Recruiter: Hi Sarah, thanks for taking the time to chat today...\nCandidate: Of course, I'm excited to learn more...",
                     key="recruiter_transcript_paste"
                 )
@@ -2940,7 +3205,8 @@ with tab_coach:
                         call_type=call_type,
                         candidate_role=candidate_role,
                         company_context=company_context,
-                        key_concerns=key_concerns
+                        key_concerns=key_concerns,
+                        jd_text=rc_jd_text
                     )
                 
                 if not str(result).startswith("Error"):
