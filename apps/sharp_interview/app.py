@@ -1677,10 +1677,18 @@ with tab_evaluate:
         with col1:
             st.markdown('<div class="input-card">', unsafe_allow_html=True)
             st.markdown("**📄 Job Description**")
-            jd_src = st.radio("Source:", ["📝 Paste", "📜 History", "📁 Upload"], horizontal=True, key=f"jd_src_{candidate_num}")
+            jd_src = st.radio("Source:", ["📁 Upload", "📜 History", "📝 Paste"], horizontal=True, key=f"jd_src_{candidate_num}")
             
             jd_text = ""
-            if jd_src == "📜 History":
+            if jd_src == "📁 Upload":
+                jd_file = st.file_uploader("Upload JD", type=['txt', 'pdf', 'docx'], key=f"jd_file_{candidate_num}")
+                if jd_file:
+                    jd_text = extract_text_from_file(jd_file)
+                    if jd_text and not jd_text.startswith("["):
+                        st.success(f"Loaded ({len(jd_text):,} chars)")
+                    else:
+                        st.warning(jd_text)
+            elif jd_src == "📜 History":
                 history = get_jd_history(20)
                 if history:
                     opts = {f"{j['job_title']} ({j['created_at'][:10]})": j for j in history}
@@ -1690,21 +1698,13 @@ with tab_evaluate:
                         st.success(f"Loaded: {opts[sel].get('job_title')}")
                 else:
                     st.info("No saved JDs")
-            elif jd_src == "📁 Upload":
-                jd_file = st.file_uploader("Upload JD", type=['txt', 'pdf', 'docx'], key=f"jd_file_{candidate_num}")
-                if jd_file:
-                    jd_text = extract_text_from_file(jd_file)
-                    if jd_text and not jd_text.startswith("["):
-                        st.success(f"Loaded ({len(jd_text):,} chars)")
-                    else:
-                        st.warning(jd_text)
             else:
                 jd_text = st.text_area("Paste JD:", height=150, key=f"jd_paste_{candidate_num}")
             st.markdown('</div>', unsafe_allow_html=True)
             
             st.markdown('<div class="input-card">', unsafe_allow_html=True)
             st.markdown("**📋 Candidate CV**")
-            cv_src = st.radio("Source:", ["📝 Paste", "📁 Upload"], horizontal=True, key=f"cv_src_{candidate_num}")
+            cv_src = st.radio("Source:", ["📁 Upload", "📝 Paste"], horizontal=True, key=f"cv_src_{candidate_num}")
             
             cv_text = ""
             if cv_src == "📁 Upload":
@@ -1722,7 +1722,7 @@ with tab_evaluate:
         with col2:
             st.markdown('<div class="input-card">', unsafe_allow_html=True)
             st.markdown("**🎙️ Interview Transcript**")
-            trans_src = st.radio("Source:", ["📝 Paste", "📁 Upload"], horizontal=True, key=f"trans_src_{candidate_num}")
+            trans_src = st.radio("Source:", ["📁 Upload", "📝 Paste"], horizontal=True, key=f"trans_src_{candidate_num}")
             
             transcript = ""
             if trans_src == "📁 Upload":
@@ -1797,10 +1797,18 @@ with tab_questions:
         st.markdown("**Job Details**")
         job_title = st.text_input("Job Title", placeholder="Senior Software Engineer", key="q_title")
         
-        q_jd_src = st.radio("JD Source:", ["📝 Paste", "📜 History", "📁 Upload"], horizontal=True, key="q_jd_src")
+        q_jd_src = st.radio("JD Source:", ["📁 Upload", "📜 History", "📝 Paste"], horizontal=True, key="q_jd_src")
         
         requirements = ""
-        if q_jd_src == "📜 History":
+        if q_jd_src == "📁 Upload":
+            q_jd_file = st.file_uploader("Upload JD", type=['txt', 'pdf', 'docx'], key="q_jd_file")
+            if q_jd_file:
+                requirements = extract_text_from_file(q_jd_file)
+                if requirements and not requirements.startswith("["):
+                    st.success("Loaded")
+                else:
+                    st.warning(requirements)
+        elif q_jd_src == "📜 History":
             history = get_jd_history(20)
             if history:
                 opts = {f"{j['job_title']} ({j['created_at'][:10]})": j for j in history}
@@ -1810,14 +1818,6 @@ with tab_questions:
                     st.success(f"Loaded: {opts[sel].get('job_title')}")
             else:
                 st.info("No saved JDs")
-        elif q_jd_src == "📁 Upload":
-            q_jd_file = st.file_uploader("Upload JD", type=['txt', 'pdf', 'docx'], key="q_jd_file")
-            if q_jd_file:
-                requirements = extract_text_from_file(q_jd_file)
-                if requirements and not requirements.startswith("["):
-                    st.success("Loaded")
-                else:
-                    st.warning(requirements)
         else:
             requirements = st.text_area("Requirements:", height=150, key="q_requirements")
         st.markdown('</div>', unsafe_allow_html=True)
@@ -1833,17 +1833,17 @@ with tab_questions:
         
         st.markdown('<div class="input-card">', unsafe_allow_html=True)
         st.markdown("**Candidate CV (optional)**")
-        q_cv_src = st.radio("Source:", ["None", "📝 Paste", "📁 Upload"], horizontal=True, key="q_cv_src")
+        q_cv_src = st.radio("Source:", ["None", "📁 Upload", "📝 Paste"], horizontal=True, key="q_cv_src")
         
         q_cv_text = ""
-        if q_cv_src == "📝 Paste":
-            q_cv_text = st.text_area("Paste CV:", height=100, key="q_cv_paste")
-        elif q_cv_src == "📁 Upload":
+        if q_cv_src == "📁 Upload":
             q_cv_file = st.file_uploader("Upload CV", type=['txt', 'pdf', 'docx'], key="q_cv_file")
             if q_cv_file:
                 q_cv_text = extract_text_from_file(q_cv_file)
                 if q_cv_text and not q_cv_text.startswith("["):
                     st.success("Loaded")
+        elif q_cv_src == "📝 Paste":
+            q_cv_text = st.text_area("Paste CV:", height=100, key="q_cv_paste")
         st.markdown('</div>', unsafe_allow_html=True)
     
     st.markdown("---")
