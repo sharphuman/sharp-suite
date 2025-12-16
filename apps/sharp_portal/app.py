@@ -17,12 +17,6 @@ try:
         SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_KEY,
         GOD_PASSWORD, APP_URLS
     )
-    from shared_ui import (
-        apply_global_styles,
-        render_top_banner,
-        render_header,
-        COLORS
-    )
     USING_SHARED = True
 except ImportError:
     USING_SHARED = False
@@ -251,7 +245,9 @@ def get_user_email():
 def build_app_url(app_key):
     base_url = APP_URLS.get(app_key, f"https://{app_key}.sharphuman.com")
     token = st.session_state.get("session_token", "")
-    return f"{base_url}?token={token}" if token else base_url
+    if token:
+        return f"{base_url}?token={token}"
+    return base_url
 
 
 # ============================================
@@ -262,11 +258,20 @@ def render_auth():
     st.markdown("""<style>
     @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap');
     *, *::before, *::after { font-family: 'Nunito', sans-serif !important; }
-    .stApp { background: #1a1a1a !important; }
+    
+    .stApp { 
+        background: #1a1a1a;
+        background-image: url('https://sharphuman.com/sharphuman_blue.png');
+        background-attachment: fixed;
+        background-size: cover;
+        background-position: center;
+        background-blend-mode: lighten;
+    }
+    
     [data-testid="stHeader"] { background: transparent !important; }
     h1, h2, h3, h4 { color: white !important; }
     p, span, label { color: #e5e5e5 !important; }
-    .stTextInput > div > div > input { background: #2a2a2a !important; border: 1px solid rgba(255,255,255,0.1) !important; color: white !important; border-radius: 8px !important; }
+    .stTextInput > div > div > input { background: rgba(42, 42, 42, 0.8) !important; border: 1px solid rgba(255,255,255,0.1) !important; color: white !important; border-radius: 8px !important; }
     .stButton > button { background: linear-gradient(135deg, #6366f1, #8b5cf6) !important; color: white !important; border: none !important; border-radius: 8px !important; font-weight: 600 !important; }
     </style>""", unsafe_allow_html=True)
     
@@ -274,9 +279,9 @@ def render_auth():
     with c2:
         st.markdown("""
         <div style="text-align:center;padding:60px 0 30px;">
-            <img src="https://sharphuman.com/logo1-3.png" style="width:80px;margin-bottom:20px;">
-            <h1 style="margin:0;font-size:2.5rem;">Sharp Suite</h1>
-            <p style="color:#9ca3af;">Your AI Recruiting Toolkit</p>
+            <img src="https://sharphuman.com/logo1-3.png" style="width:100px;margin-bottom:20px;">
+            <h1 style="margin:0;font-size:2.8rem;">Sharp Suite</h1>
+            <p style="color:#9ca3af;font-size:1.2rem;">Your AI Recruiting Toolkit</p>
         </div>
         """, unsafe_allow_html=True)
         
@@ -335,17 +340,17 @@ def render_auth():
 def render_sidebar():
     with st.sidebar:
         st.markdown(f"""
-        <div style='padding:16px;background:rgba(99,102,241,0.1);border-radius:12px;margin-bottom:20px;'>
-            <p style='color:#9ca3af;margin:0;font-size:12px;'>Logged in as</p>
-            <p style='color:white;margin:4px 0;font-weight:600;'>{get_user_email()}</p>
-            <p style='color:#6366f1;margin:0;font-size:12px;text-transform:uppercase;'>{st.session_state.get('user_plan', 'free')} plan</p>
+        <div style='padding:16px;background:rgba(99,102,241,0.15);border-radius:12px;margin-bottom:20px;backdrop-filter:blur(10px);'>
+            <p style='color:#9ca3af;margin:0;font-size:13px;'>Logged in as</p>
+            <p style='color:white;margin:4px 0;font-weight:600;font-size:15px;'>{get_user_email()}</p>
+            <p style='color:#6366f1;margin:0;font-size:12px;text-transform:uppercase;font-weight:600;'>{st.session_state.get('user_plan', 'free')} plan</p>
         </div>
         """, unsafe_allow_html=True)
         
         st.markdown("**Apps**")
         
         # Current app indicator
-        st.markdown("""<div style='background:linear-gradient(135deg,#6366f1,#8b5cf6);padding:10px 16px;border-radius:8px;text-align:center;margin:4px 0;color:white;font-weight:600;'>🏠 Portal ◀</div>""", unsafe_allow_html=True)
+        st.markdown("""<div style='background:linear-gradient(135deg,#6366f1,#8b5cf6);padding:12px 16px;border-radius:8px;text-align:center;margin:4px 0;color:white;font-weight:600;font-size:15px;'>🏠 Portal ◀</div>""", unsafe_allow_html=True)
         
         # App links
         sidebar_apps = [
@@ -373,81 +378,96 @@ def render_sidebar():
 
 
 def render_dashboard():
+    # Get token for URL building
+    token = st.session_state.get("session_token", "")
+    
     st.markdown("""<style>
-    @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap');
     *, *::before, *::after { font-family: 'Nunito', sans-serif !important; }
     
-    .stApp { background: #1a1a1a !important; }
+    .stApp { 
+        background: #1a1a1a;
+        background-image: url('https://sharphuman.com/sharphuman_blue.png');
+        background-attachment: fixed;
+        background-size: cover;
+        background-position: center;
+        background-blend-mode: lighten;
+    }
+    
     [data-testid="stHeader"] { background: transparent !important; }
-    section[data-testid="stSidebar"] { background: #1a1a1a !important; border-right: 1px solid rgba(255,255,255,0.1); }
-    section[data-testid="stSidebar"] > div { background: #1a1a1a !important; }
+    section[data-testid="stSidebar"] { background: rgba(26, 26, 26, 0.95) !important; border-right: 1px solid rgba(99,102,241,0.2); backdrop-filter: blur(10px); }
+    section[data-testid="stSidebar"] > div { background: transparent !important; }
     section[data-testid="stSidebar"] * { color: #e5e5e5 !important; }
     
     h1, h2, h3, h4 { color: white !important; }
     p, span, label { color: #e5e5e5 !important; }
     
     .app-tile {
-        background: linear-gradient(145deg, #2a2a2a, #1f1f1f);
-        border: 1px solid rgba(99,102,241,0.2);
-        border-radius: 16px;
-        padding: 24px;
+        background: rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(59, 130, 246, 0.3);
+        border-radius: 20px;
+        padding: 28px;
         height: 100%;
         transition: all 0.3s ease;
-        cursor: pointer;
     }
     .app-tile:hover {
-        border-color: rgba(99,102,241,0.6);
-        transform: translateY(-4px);
-        box-shadow: 0 12px 40px rgba(99,102,241,0.15);
+        border-color: rgba(59, 130, 246, 0.8);
+        transform: translateY(-5px);
+        box-shadow: 0 20px 40px rgba(59, 130, 246, 0.25);
     }
     
     .app-icon {
-        font-size: 2.5rem;
-        margin-bottom: 12px;
+        font-size: 3rem;
+        margin-bottom: 16px;
     }
     
     .app-title {
-        font-size: 1.4rem;
+        font-size: 1.6rem;
         font-weight: 700;
-        color: white;
-        margin: 0 0 4px 0;
+        color: white !important;
+        margin: 0 0 6px 0;
     }
     
     .app-tagline {
-        font-size: 0.95rem;
-        color: #a5b4fc;
-        margin: 0 0 16px 0;
+        font-size: 1.1rem;
+        color: #60a5fa !important;
+        margin: 0 0 18px 0;
         font-weight: 500;
     }
     
     .app-desc {
-        font-size: 0.9rem;
-        color: #9ca3af;
-        line-height: 1.6;
-        margin: 0 0 20px 0;
+        font-size: 1rem;
+        color: #b8b8b8 !important;
+        line-height: 1.7;
+        margin: 0 0 24px 0;
     }
     
     .app-button {
         display: inline-block;
         background: linear-gradient(135deg, #6366f1, #8b5cf6);
         color: white !important;
-        padding: 10px 24px;
-        border-radius: 8px;
+        padding: 12px 28px;
+        border-radius: 10px;
         font-weight: 600;
+        font-size: 1rem;
         text-decoration: none;
         transition: all 0.2s ease;
     }
     .app-button:hover {
         transform: scale(1.05);
-        box-shadow: 0 4px 15px rgba(99,102,241,0.4);
+        box-shadow: 0 8px 25px rgba(99,102,241,0.5);
+        color: white !important;
+        text-decoration: none;
     }
     
     .welcome-section {
-        background: linear-gradient(135deg, rgba(99,102,241,0.1), rgba(139,92,246,0.1));
-        border: 1px solid rgba(99,102,241,0.2);
-        border-radius: 16px;
-        padding: 32px;
-        margin-bottom: 32px;
+        background: rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(59, 130, 246, 0.3);
+        border-radius: 20px;
+        padding: 36px;
+        margin-bottom: 36px;
     }
     
     .stLinkButton > a {
@@ -461,11 +481,11 @@ def render_dashboard():
     
     # Header
     st.markdown("""
-    <div style="display:flex;align-items:center;gap:16px;padding:20px 0;border-bottom:1px solid rgba(99,102,241,0.2);margin-bottom:32px;">
-        <img src="https://sharphuman.com/logo1-3.png" style="width:50px;">
+    <div style="display:flex;align-items:center;gap:20px;padding:24px 0;border-bottom:1px solid rgba(59,130,246,0.3);margin-bottom:36px;">
+        <img src="https://sharphuman.com/logo1-3.png" style="width:60px;">
         <div>
-            <h1 style="margin:0;font-size:28px;">Sharp Suite</h1>
-            <p style="color:#9ca3af;margin:0;">Your AI Recruiting Toolkit</p>
+            <h1 style="margin:0;font-size:2.2rem;">Sharp Suite</h1>
+            <p style="color:#9ca3af;margin:0;font-size:1.1rem;">Your AI Recruiting Toolkit</p>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -474,8 +494,8 @@ def render_dashboard():
     user_name = get_user_email().split('@')[0].title() if '@' in get_user_email() else get_user_email()
     st.markdown(f"""
     <div class="welcome-section">
-        <h2 style="margin:0 0 12px 0;">👋 Welcome back, {user_name}!</h2>
-        <p style="color:#c4c4c4;margin:0;font-size:1.05rem;line-height:1.7;">
+        <h2 style="margin:0 0 16px 0;font-size:1.8rem;">👋 Welcome back, {user_name}!</h2>
+        <p style="color:#c4c4c4;margin:0;font-size:1.15rem;line-height:1.8;">
             Sharp Suite is your AI-powered recruiting command center. Whether you're writing job descriptions, 
             screening candidates, prepping for interviews, or crafting outreach that actually gets replies, 
             we've got the tools to help you work smarter. Pick an app below to get started.
@@ -489,6 +509,9 @@ def render_dashboard():
         for j, col in enumerate(cols):
             if i + j < len(APPS):
                 app = APPS[i + j]
+                app_key = app['key']
+                base_url = APP_URLS.get(app_key, f"https://{app_key}.sharphuman.com")
+                app_url = f"{base_url}?token={token}" if token else base_url
                 with col:
                     st.markdown(f"""
                     <div class="app-tile">
@@ -496,10 +519,10 @@ def render_dashboard():
                         <div class="app-title">{app['title']}</div>
                         <div class="app-tagline">{app['tagline']}</div>
                         <div class="app-desc">{app['description']}</div>
-                        <a href="{build_app_url(app['key'])}" class="app-button">Open {app['title']} →</a>
+                        <a href="{app_url}" class="app-button">Open {app['title']} →</a>
                     </div>
                     """, unsafe_allow_html=True)
-                    st.markdown("<div style='height:20px;'></div>", unsafe_allow_html=True)
+                    st.markdown("<div style='height:24px;'></div>", unsafe_allow_html=True)
 
 
 # ============================================
