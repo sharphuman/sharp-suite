@@ -1915,22 +1915,19 @@ if not st.session_state.authenticated:
 if st.session_state.working_on:
     st.toast(st.session_state.working_on)
 
-# Top Banner (shared UI)
-if USING_SHARED:
-    render_top_banner(show_cta=True, cta_text="Book a Demo")
+# Top Banner
+render_top_banner(show_cta=True, cta_text="Book a Demo")
 
-# Sidebar (shared UI or fallback)
-if USING_SHARED:
-    render_sidebar(
-        current_app="interview",
-        user_email=get_user_email(),
-        user_plan=st.session_state.get('user_plan', 'free'),
-        session_token=st.session_state.get('session_token', '')
-    )
+# Sidebar
+render_sidebar(
+    current_app="interview",
+    user_email=get_user_email(),
+    user_plan=st.session_state.get('user_plan', 'free'),
+    session_token=st.session_state.get('session_token', '')
+)
 
-# Header (shared UI or fallback)
-if USING_SHARED:
-    render_app_header("Sharp Interview", "AI-Powered Interview Evaluation")
+# Header
+render_app_header("Sharp Interview", "AI-Powered Interview Evaluation")
 
 # Show evaluated candidates
 if st.session_state.candidates:
