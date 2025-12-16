@@ -58,15 +58,13 @@ SESSION_DURATION_HOURS = int(os.environ.get("SESSION_DURATION_HOURS", "24"))
 # APP URLs (for cross-app navigation)
 # ===========================================
 APP_URLS = {
-    "portal": os.environ.get("PORTAL_URL", "https://demo.sharphuman.com"),
+    "portal": os.environ.get("PORTAL_URL", "https://portal.sharphuman.com"),
     "jd": os.environ.get("JD_URL", "https://jd.sharphuman.com"),
     "screen": os.environ.get("SCREEN_URL", "https://screen.sharphuman.com"),
     "interview": os.environ.get("INTERVIEW_URL", "https://interview.sharphuman.com"),
-    "source": os.environ.get("SOURCE_URL", "https://outreach.sharphuman.com"),
+    "outreach": os.environ.get("OUTREACH_URL", "https://outreach.sharphuman.com"),
     "content": os.environ.get("CONTENT_URL", "https://content.sharphuman.com"),
     "sales": os.environ.get("SALES_URL", "https://sales.sharphuman.com"),
-    "reach": os.environ.get("REACH_URL", "https://reach.sharphuman.com"),
-    "assistant": os.environ.get("ASSISTANT_URL", "https://assistant.sharphuman.com"),
     "admin": os.environ.get("ADMIN_URL", "https://admin.sharphuman.com"),
 }
 
