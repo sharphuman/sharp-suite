@@ -699,36 +699,199 @@ Generate {max(3, duration // 10)} questions appropriate for {duration} minutes."
     return call_claude(prompt, max_tokens=4000, action="generate_questions")
 
 
-def get_recruiter_coaching(topic, context="", experience_level="mid"):
+def analyze_recruiter_screen(transcript, call_type="candidate_screen", candidate_role="", company_context="", key_concerns=""):
     """
-    Recruiter Coach - provides guidance and advice on interviewing topics.
+    Analyze a recruiter's performance on a call (screening, intake, etc.)
     
     Args:
-        topic: The topic/question the recruiter wants help with
-        context: Optional context about the specific situation
-        experience_level: Recruiter's experience level for calibrated advice
+        transcript: The call transcript
+        call_type: Type of call being analyzed
+        candidate_role: Role being recruited for (if applicable)
+        company_context: Context about the company/client
+        key_concerns: Specific areas to focus on
     """
     
-    prompt = f"""You are an expert recruiting coach with 20+ years of experience helping recruiters and hiring managers improve their interviewing skills. You're friendly, supportive, and practical.
+    # Call type specific frameworks
+    RECRUITER_CALL_TYPES = {
+        "candidate_screen": {
+            "name": "Candidate Screening Call",
+            "description": "Recruiter qualifying and selling opportunity to a candidate",
+            "skills": {
+                "opening": {
+                    "name": "Opening & Rapport",
+                    "weight": 10,
+                    "criteria": ["Quick rapport building", "Set agenda/expectations", "Created comfortable environment"]
+                },
+                "qualification": {
+                    "name": "Candidate Qualification",
+                    "weight": 25,
+                    "criteria": ["Salary expectations extracted", "Notice period/availability confirmed", "Motivation for move understood", "Competing offers identified", "Relocation/remote requirements clarified"]
+                },
+                "role_discovery": {
+                    "name": "Experience & Fit Assessment",
+                    "weight": 25,
+                    "criteria": ["Relevant experience verified", "Skills match explored", "Cultural fit signals gathered", "Red flags identified (gaps, job hopping, evasiveness)", "Strengths/weaknesses understood"]
+                },
+                "role_sell": {
+                    "name": "Opportunity Sell",
+                    "weight": 20,
+                    "criteria": ["Role benefits communicated", "Company value proposition delivered", "Candidate excitement built", "Objections to role addressed", "Differentiated from other opportunities"]
+                },
+                "control": {
+                    "name": "Call Control & Efficiency",
+                    "weight": 10,
+                    "criteria": ["Kept call on track", "Managed talkative candidate", "Extracted info efficiently", "Professional pace maintained"]
+                },
+                "closing": {
+                    "name": "Close & Next Steps",
+                    "weight": 10,
+                    "criteria": ["Clear next steps established", "Candidate commitment obtained", "Timeline confirmed", "Exclusivity/priority discussed"]
+                }
+            }
+        },
+        "client_intake": {
+            "name": "Client Job Intake Call",
+            "description": "Recruiter taking a job order from a client",
+            "skills": {
+                "opening": {
+                    "name": "Opening & Relationship",
+                    "weight": 10,
+                    "criteria": ["Professional rapport", "Positioned as expert/partner", "Set collaborative tone"]
+                },
+                "role_discovery": {
+                    "name": "Role Requirements Extraction",
+                    "weight": 30,
+                    "criteria": ["Must-have vs nice-to-have clarified", "Technical requirements understood", "Soft skills/culture fit defined", "Deal-breakers identified", "Salary range confirmed"]
+                },
+                "process_discovery": {
+                    "name": "Hiring Process Discovery",
+                    "weight": 20,
+                    "criteria": ["Interview stages understood", "Decision makers identified", "Timeline extracted", "Competition for hire understood", "Urgency level established"]
+                },
+                "positioning": {
+                    "name": "Agency Value Positioning",
+                    "weight": 20,
+                    "criteria": ["Differentiated from other agencies", "Expertise demonstrated", "Success stories shared", "Process/methodology explained"]
+                },
+                "closing": {
+                    "name": "Agreement & Next Steps",
+                    "weight": 20,
+                    "criteria": ["Fee/terms discussed", "Exclusivity addressed", "Submission timeline agreed", "Communication cadence set", "Job order details confirmed"]
+                }
+            }
+        },
+        "candidate_close": {
+            "name": "Candidate Offer/Close Call",
+            "description": "Recruiter closing a candidate on an offer",
+            "skills": {
+                "setup": {
+                    "name": "Offer Setup",
+                    "weight": 15,
+                    "criteria": ["Built anticipation", "Confirmed candidate still interested", "Identified any last-minute concerns"]
+                },
+                "presentation": {
+                    "name": "Offer Presentation",
+                    "weight": 25,
+                    "criteria": ["Presented offer positively", "Highlighted key benefits", "Connected to candidate's priorities", "Explained full package clearly"]
+                },
+                "objection_handling": {
+                    "name": "Objection Handling",
+                    "weight": 30,
+                    "criteria": ["Salary objections addressed", "Counter-offer preparation done", "Concerns acknowledged and resolved", "Created urgency appropriately"]
+                },
+                "closing": {
+                    "name": "Getting Commitment",
+                    "weight": 30,
+                    "criteria": ["Asked for acceptance directly", "Handled hesitation well", "Secured verbal commitment", "Established acceptance timeline", "Counter-offer strategy discussed"]
+                }
+            }
+        }
+    }
+    
+    call_config = RECRUITER_CALL_TYPES.get(call_type, RECRUITER_CALL_TYPES["candidate_screen"])
+    
+    # Build skills description
+    skills_desc = ""
+    for skill_key, skill_data in call_config["skills"].items():
+        criteria_list = "\n".join([f"    - {c}" for c in skill_data["criteria"]])
+        skills_desc += f"""
+### {skill_data['name']} (Weight: {skill_data['weight']}%)
+Evaluate:
+{criteria_list}
+"""
 
-## RECRUITER'S QUESTION
-{topic}
+    # Key concerns section
+    concerns_section = ""
+    if key_concerns and key_concerns.strip():
+        concerns_section = f"""
+## SPECIFIC CONCERNS TO ADDRESS
+{key_concerns}
+"""
 
-{f"## ADDITIONAL CONTEXT{chr(10)}{context}" if context else ""}
+    prompt = f"""You are an expert recruiting trainer analyzing a recruiter's performance on a {call_config['name']}.
 
-## RECRUITER EXPERIENCE LEVEL: {experience_level}
+## CALL CONTEXT
+- Call Type: {call_config['name']}
+- Description: {call_config['description']}
+{f"- Role Being Recruited: {candidate_role}" if candidate_role else ""}
+{f"- Company Context: {company_context}" if company_context else ""}
 
-Provide helpful, actionable coaching. Include:
-1. Direct answer to their question
-2. Practical tips they can use immediately
-3. Common mistakes to avoid
-4. Example scripts or phrases where helpful
+## EVALUATION FRAMEWORK
+{skills_desc}
+{concerns_section}
 
-Keep your tone warm and encouraging, like a supportive mentor. Be specific and practical, not theoretical.
+## TRANSCRIPT
+{transcript[:20000]}
 
-Format your response in clear sections with headers. Use bullet points for lists. Include example dialogue where relevant."""
+---
 
-    return call_claude(prompt, max_tokens=3000, action="recruiter_coach")
+Analyze the recruiter's performance thoroughly. For each skill area, provide specific feedback with exact quotes and timestamps from the transcript.
+
+**CRITICAL REQUIREMENTS:**
+1. Use EXACT timestamps in [MM:SS] format when available
+2. Include DIRECT QUOTES from the transcript
+3. Focus on the RECRUITER's performance, not the candidate
+4. Provide specific "Fix for Next Call" scripts for weak areas
+5. Be constructive but honest - this is for coaching
+
+Return your analysis in this JSON format:
+```json
+{{
+    "overall_score": <0-100>,
+    "overall_summary": "<2-3 sentence summary of recruiter's performance>",
+    "call_type": "{call_type}",
+    "skills": [
+        {{
+            "skill_name": "<Skill Name>",
+            "score": <0-10>,
+            "weight": <percentage>,
+            "what_worked": ["<specific thing recruiter did well with quote>"],
+            "what_needed_improvement": ["<specific thing to improve>"],
+            "transcript_examples": ["<exact quote showing this skill>"],
+            "fix_for_next_call": "<specific script or technique for improvement>"
+        }}
+    ],
+    "key_info_extracted": {{
+        "salary_expectations": "<what was gathered or MISSED>",
+        "notice_period": "<what was gathered or MISSED>",
+        "motivation": "<what was gathered or MISSED>",
+        "competing_offers": "<what was gathered or MISSED>",
+        "red_flags_identified": ["<any red flags the recruiter caught or missed>"]
+    }},
+    "recruiter_strengths": ["<top strength>", "<another strength>"],
+    "priority_improvements": ["<most important thing to work on>", "<second priority>"],
+    "client_readiness": {{
+        "ready_to_submit": <true/false>,
+        "missing_info": ["<info still needed before submitting to client>"],
+        "submission_notes": "<what the recruiter should tell the client>"
+    }},
+    "coaching_summary": "<paragraph of personalized coaching for this recruiter>"
+}}
+```
+
+Focus on actionable coaching. What should this recruiter do differently next time?"""
+
+    return call_claude(prompt, max_tokens=6000, action="recruiter_screen_analysis")
 
 # ============================================
 # EVALUATION FUNCTIONS
@@ -1590,7 +1753,9 @@ else:
     .stTabs [data-baseweb="tab-list"] { background: transparent !important; border-bottom: 1px solid rgba(99,102,241,0.2); }
     .stTabs [aria-selected="true"] { color: #fff !important; border-bottom: 2px solid #6366f1 !important; }
     .input-card { background: #12121a; border: 1px solid rgba(99,102,241,0.2); border-radius: 12px; padding: 20px; margin: 12px 0; }
-    .status-badge { position: fixed; top: 70px; right: 20px; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; padding: 10px 20px; border-radius: 25px; font-weight: 600; z-index: 999; animation: pulse 2s infinite; }
+    /* Working Status Badge with Logo Spinner */
+    .status-badge { position: fixed; top: 70px; right: 20px; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; padding: 12px 24px 12px 50px; border-radius: 25px; font-weight: 600; z-index: 9999; box-shadow: 0 4px 15px rgba(99,102,241,0.4); }
+    .status-badge::before { content: ''; position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 28px; height: 28px; background: url('https://assets.sharphuman.com/logo_spinner_small_transparent.png') center/contain no-repeat; }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
     </style>""", unsafe_allow_html=True)
 
@@ -1702,7 +1867,7 @@ if st.session_state.candidates:
     st.markdown(f"**Evaluated:** {chips}", unsafe_allow_html=True)
 
 # Main Tabs
-tab_evaluate, tab_questions, tab_coach = st.tabs(["🎯 Evaluate Interview", "❓ Generate Questions", "🎓 Recruiter Coach"])
+tab_evaluate, tab_questions, tab_coach = st.tabs(["🎯 Evaluate Interview", "❓ Generate Questions", "🎤 Recruiter Call Analyzer"])
 
 # ============================================
 # TAB 1: EVALUATE INTERVIEW
@@ -2510,111 +2675,279 @@ with tab_questions:
             st.error(result)
 
 # ============================================
-# TAB 3: RECRUITER COACH
+# TAB 3: RECRUITER CALL ANALYZER
 # ============================================
 with tab_coach:
-    st.markdown("### 🎓 Recruiter Coach")
-    st.markdown("Get expert guidance on interviewing, hiring, and candidate assessment.")
+    st.markdown("### 🎤 Recruiter Call Analyzer")
+    st.markdown("Analyze your screening calls to improve candidate qualification and conversion.")
     
-    # Quick topic buttons
-    st.markdown("**Quick Topics:**")
-    topic_cols = st.columns(4)
+    # Initialize session state for this tab
+    if 'recruiter_analysis_result' not in st.session_state:
+        st.session_state.recruiter_analysis_result = None
     
-    quick_topics = [
-        ("🎯 STAR Method", "How do I use the STAR method effectively to evaluate behavioral answers?"),
-        ("🚩 Red Flags", "What are the most common interview red flags I should watch for?"),
-        ("💬 Tough Questions", "How do I ask difficult questions without making candidates uncomfortable?"),
-        ("⚖️ Bias Reduction", "How can I reduce unconscious bias in my interviews?"),
-        ("📊 Scoring", "What's the best way to score and compare candidates objectively?"),
-        ("🤝 Rapport", "How do I build rapport quickly at the start of an interview?"),
-        ("❌ Rejections", "How do I give constructive rejection feedback?"),
-        ("🎭 Nervous Candidates", "How do I help nervous candidates perform their best?")
-    ]
-    
-    # Initialize coach topic in session state
-    if 'coach_topic' not in st.session_state:
-        st.session_state.coach_topic = ""
-    
-    for i, (label, topic) in enumerate(quick_topics):
-        col_idx = i % 4
-        with topic_cols[col_idx]:
-            if st.button(label, key=f"quick_{i}", use_container_width=True):
-                st.session_state.coach_topic = topic
-    
-    st.markdown("---")
-    
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        st.markdown('<div class="input-card">', unsafe_allow_html=True)
-        st.markdown("**Ask Your Question**")
-        
-        coach_question = st.text_area(
-            "What do you need help with?",
-            value=st.session_state.coach_topic,
-            height=100,
-            placeholder="e.g., 'How do I assess culture fit without asking illegal questions?' or 'What should I do when a candidate gives vague answers?'",
-            key="coach_question_input"
-        )
-        
-        coach_context = st.text_area(
-            "Additional context (optional):",
-            height=80,
-            placeholder="e.g., 'I'm hiring for a senior engineering role at a startup' or 'The candidate seemed nervous'",
-            key="coach_context"
-        )
-        st.markdown('</div>', unsafe_allow_html=True)
-    
-    with col2:
-        st.markdown('<div class="input-card">', unsafe_allow_html=True)
-        st.markdown("**Your Experience Level**")
-        experience = st.radio(
-            "I am a:",
-            ["🌱 New to interviewing", "⚖️ Some experience", "🔥 Experienced interviewer"],
-            key="coach_experience",
-            help="Advice will be calibrated to your level"
-        )
-        st.markdown('</div>', unsafe_allow_html=True)
-    
-    st.markdown("---")
-    
-    if st.button("🎓 Get Coaching", type="primary", use_container_width=True):
-        if not coach_question or len(coach_question.strip()) < 10:
-            st.warning("Please ask a question (at least 10 characters)")
-        else:
-            exp_map = {
-                "🌱 New to interviewing": "beginner",
-                "⚖️ Some experience": "intermediate", 
-                "🔥 Experienced interviewer": "advanced"
-            }
-            st.session_state.working_on = "Getting coaching advice..."
-            result, _ = get_recruiter_coaching(
-                coach_question,
-                context=coach_context,
-                experience_level=exp_map.get(experience, "intermediate")
-            )
-            st.session_state.working_on = None
-            st.session_state.coach_result = result
-    
-    if st.session_state.get('coach_result'):
-        result = st.session_state.coach_result
+    # Show results if available
+    if st.session_state.recruiter_analysis_result:
+        result = st.session_state.recruiter_analysis_result
         
         if not str(result).startswith("Error"):
-            st.markdown("---")
-            st.markdown("### 💡 Coaching Advice")
-            st.markdown(f"""
-            <div style="background:linear-gradient(135deg,rgba(99,102,241,0.1),rgba(139,92,246,0.1));border-radius:16px;padding:24px;border-left:4px solid #6366f1;">
-                {result.replace(chr(10), '<br>')}
-            </div>
-            """, unsafe_allow_html=True)
+            try:
+                m = re.search(r'```json\s*(.*?)\s*```', result, re.DOTALL)
+                a = json.loads(m.group(1) if m else result)
+                
+                # Back button
+                if st.button("← Analyze Another Call", key="back_recruiter"):
+                    st.session_state.recruiter_analysis_result = None
+                    st.rerun()
+                
+                st.markdown("---")
+                
+                # Overall Score
+                score = a.get('overall_score', 0)
+                color = "#10b981" if score >= 70 else "#eab308" if score >= 50 else "#ef4444"
+                call_type_name = {
+                    "candidate_screen": "Candidate Screen",
+                    "client_intake": "Client Intake",
+                    "candidate_close": "Offer/Close Call"
+                }.get(a.get('call_type', ''), 'Recruiter Call')
+                
+                st.markdown(f"""
+                <div style="background:linear-gradient(135deg,rgba(99,102,241,0.1),rgba(139,92,246,0.1));border-radius:16px;padding:30px;text-align:center;margin-bottom:24px;">
+                    <span style="background:rgba(99,102,241,0.2);color:#a5b4fc;padding:4px 12px;border-radius:12px;font-size:12px;">{call_type_name}</span>
+                    <p style="color:#9ca3af;margin:16px 0 0;">YOUR PERFORMANCE</p>
+                    <p style="color:{color};font-size:64px;font-weight:bold;margin:10px 0;">{score}<span style="font-size:24px;color:#6b7280;">/100</span></p>
+                    <p style="color:#e5e5e5;">{a.get('overall_summary', '')}</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Strengths & Improvements
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.markdown("#### 💪 Your Strengths")
+                    for s in a.get('recruiter_strengths', []):
+                        st.markdown(f"<div style='background:rgba(16,185,129,0.1);border-left:3px solid #10b981;padding:12px;margin:8px 0;border-radius:0 8px 8px 0;'>{s}</div>", unsafe_allow_html=True)
+                with c2:
+                    st.markdown("#### 🎯 Priority Improvements")
+                    for i in a.get('priority_improvements', []):
+                        st.markdown(f"<div style='background:rgba(239,68,68,0.1);border-left:3px solid #ef4444;padding:12px;margin:8px 0;border-radius:0 8px 8px 0;'>{i}</div>", unsafe_allow_html=True)
+                
+                # Skills Breakdown
+                st.markdown("---")
+                st.markdown("## 📊 Skills Breakdown")
+                
+                for skill in a.get('skills', []):
+                    skill_score = skill.get('score', 0)
+                    skill_color = "#10b981" if skill_score >= 8 else "#eab308" if skill_score >= 6 else "#ef4444"
+                    
+                    with st.expander(f"**{skill.get('skill_name')}** — {skill_score}/10 ({skill.get('weight', 0)}% weight)"):
+                        if skill.get('what_worked'):
+                            st.markdown("**✅ What Worked:**")
+                            for w in skill.get('what_worked', []):
+                                st.markdown(f"→ {w}")
+                        
+                        if skill.get('what_needed_improvement'):
+                            st.markdown("**❌ What Needed Improvement:**")
+                            for w in skill.get('what_needed_improvement', []):
+                                st.markdown(f"→ {w}")
+                        
+                        if skill.get('transcript_examples'):
+                            st.markdown("**📍 From the Call:**")
+                            for ex in skill.get('transcript_examples', []):
+                                st.markdown(f'<div style="background:#1a1a2e;border-left:3px solid #6366f1;padding:12px;margin:8px 0;border-radius:0 8px 8px 0;font-style:italic;color:#a5b4fc;">"{ex}"</div>', unsafe_allow_html=True)
+                        
+                        if skill.get('fix_for_next_call'):
+                            st.markdown(f"""
+                            <div style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:8px;padding:12px;margin-top:12px;">
+                                <p style="color:#10b981;font-weight:600;margin:0 0 8px;">⚡ Fix for Next Call:</p>
+                                <p style="color:#e5e5e5;margin:0;font-style:italic;">"{skill.get('fix_for_next_call')}"</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+                
+                # Key Info Extracted
+                key_info = a.get('key_info_extracted', {})
+                if key_info:
+                    st.markdown("---")
+                    st.markdown("## 📋 Key Info Extracted")
+                    st.caption("Did you gather what you need to submit this candidate?")
+                    
+                    info_items = [
+                        ("💰 Salary Expectations", key_info.get('salary_expectations', 'Not discussed')),
+                        ("📅 Notice Period", key_info.get('notice_period', 'Not discussed')),
+                        ("🎯 Motivation", key_info.get('motivation', 'Not discussed')),
+                        ("⚔️ Competing Offers", key_info.get('competing_offers', 'Not discussed'))
+                    ]
+                    
+                    cols = st.columns(2)
+                    for idx, (label, value) in enumerate(info_items):
+                        with cols[idx % 2]:
+                            is_missed = 'MISSED' in str(value).upper() or 'NOT DISCUSSED' in str(value).upper()
+                            bg_color = "rgba(239,68,68,0.1)" if is_missed else "rgba(16,185,129,0.1)"
+                            border_color = "#ef4444" if is_missed else "#10b981"
+                            st.markdown(f"""
+                            <div style="background:{bg_color};border-left:3px solid {border_color};padding:12px;margin:8px 0;border-radius:0 8px 8px 0;">
+                                <p style="color:#9ca3af;font-size:12px;margin:0;">{label}</p>
+                                <p style="color:#e5e5e5;margin:4px 0 0;font-weight:500;">{value}</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+                    
+                    # Red flags identified
+                    red_flags = key_info.get('red_flags_identified', [])
+                    if red_flags:
+                        st.markdown("**🚩 Red Flags Identified:**")
+                        for flag in red_flags:
+                            st.markdown(f"- {flag}")
+                
+                # Client Readiness
+                client_ready = a.get('client_readiness', {})
+                if client_ready:
+                    st.markdown("---")
+                    st.markdown("## 📤 Client Submission Readiness")
+                    
+                    ready = client_ready.get('ready_to_submit', False)
+                    if ready:
+                        st.success("✅ **Ready to Submit** - You have the key info needed")
+                    else:
+                        st.warning("⚠️ **Not Ready** - Missing critical information")
+                        missing = client_ready.get('missing_info', [])
+                        if missing:
+                            st.markdown("**Missing Info:**")
+                            for m in missing:
+                                st.markdown(f"- ❌ {m}")
+                    
+                    notes = client_ready.get('submission_notes', '')
+                    if notes:
+                        st.markdown(f"""
+                        <div style="background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.3);border-radius:8px;padding:16px;margin-top:12px;">
+                            <p style="color:#a5b4fc;font-weight:600;margin:0 0 8px;">📝 Submission Notes:</p>
+                            <p style="color:#e5e5e5;margin:0;">{notes}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                
+                # Coaching Summary
+                st.markdown("---")
+                st.markdown("## 🎓 Coaching Summary")
+                st.markdown(f"""
+                <div style="background:linear-gradient(135deg,rgba(99,102,241,0.1),rgba(139,92,246,0.1));border-radius:12px;padding:24px;border-left:4px solid #6366f1;">
+                    {a.get('coaching_summary', '')}
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Export
+                st.markdown("---")
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.download_button("📥 Download Analysis", result, "recruiter_analysis.json", use_container_width=True)
+                with col2:
+                    if st.button("🔄 Analyze Another Call", use_container_width=True, key="another_recruiter"):
+                        st.session_state.recruiter_analysis_result = None
+                        st.rerun()
             
-            # Clear button
-            if st.button("🔄 Ask Another Question", use_container_width=True):
-                st.session_state.coach_result = None
-                st.session_state.coach_topic = ""
-                st.rerun()
+            except Exception as e:
+                st.error(f"Parse error: {e}")
+                st.text(result)
         else:
             st.error(result)
+    
+    else:
+        # Input Form
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown('<div class="input-card">', unsafe_allow_html=True)
+            st.markdown("**Call Details**")
+            
+            call_type = st.selectbox(
+                "Call Type:",
+                options=["candidate_screen", "client_intake", "candidate_close"],
+                format_func=lambda x: {
+                    "candidate_screen": "📞 Candidate Screening Call",
+                    "client_intake": "📋 Client Job Intake Call",
+                    "candidate_close": "🎯 Candidate Offer/Close Call"
+                }.get(x, x),
+                key="recruiter_call_type"
+            )
+            
+            # Show description based on call type
+            call_descriptions = {
+                "candidate_screen": "Analyze how well you qualified the candidate and sold the opportunity",
+                "client_intake": "Analyze how well you took the job order and positioned your services",
+                "candidate_close": "Analyze how well you presented the offer and handled objections"
+            }
+            st.caption(call_descriptions.get(call_type, ""))
+            
+            candidate_role = st.text_input(
+                "Role Being Recruited:",
+                placeholder="e.g., Senior Software Engineer, Sales Manager",
+                key="recruiter_role"
+            )
+            
+            company_context = st.text_input(
+                "Company/Client (optional):",
+                placeholder="e.g., Tech startup, Fortune 500",
+                key="recruiter_company"
+            )
+            
+            key_concerns = st.text_area(
+                "Specific areas to focus on (optional):",
+                placeholder="e.g., 'Did I handle the salary discussion well?' or 'Watch for red flags I missed'",
+                height=68,
+                key="recruiter_concerns"
+            )
+            st.markdown('</div>', unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown('<div class="input-card">', unsafe_allow_html=True)
+            st.markdown("**Call Transcript**")
+            
+            input_method = st.radio(
+                "Input Method:",
+                ["📝 Paste Transcript", "📁 Upload File"],
+                horizontal=True,
+                key="recruiter_input_method"
+            )
+            
+            recruiter_transcript = ""
+            
+            if input_method == "📝 Paste Transcript":
+                recruiter_transcript = st.text_area(
+                    "Paste your transcript:",
+                    height=250,
+                    placeholder="Recruiter: Hi Sarah, thanks for taking the time to chat today...\nCandidate: Of course, I'm excited to learn more...",
+                    key="recruiter_transcript_paste"
+                )
+            else:
+                uploaded = st.file_uploader(
+                    "Upload transcript",
+                    type=['txt', 'pdf', 'docx', 'vtt', 'srt'],
+                    key="recruiter_transcript_upload"
+                )
+                if uploaded:
+                    with st.spinner("Processing..."):
+                        recruiter_transcript = extract_text_from_file(uploaded)
+                    if recruiter_transcript and not recruiter_transcript.startswith("["):
+                        st.success(f"✅ Loaded: {len(recruiter_transcript):,} characters")
+            
+            st.markdown('</div>', unsafe_allow_html=True)
+        
+        st.markdown("---")
+        
+        if st.button("🎤 Analyze My Performance", type="primary", use_container_width=True):
+            if not recruiter_transcript or len(recruiter_transcript.strip()) < 100:
+                st.warning("Please provide a transcript (minimum 100 characters)")
+            else:
+                with st.spinner("🔄 Analyzing your recruiter performance... 20-40 seconds"):
+                    result, _ = analyze_recruiter_screen(
+                        transcript=recruiter_transcript,
+                        call_type=call_type,
+                        candidate_role=candidate_role,
+                        company_context=company_context,
+                        key_concerns=key_concerns
+                    )
+                
+                if not str(result).startswith("Error"):
+                    st.session_state.recruiter_analysis_result = result
+                    st.rerun()
+                else:
+                    st.error(result)
 
 # Feedback Widget
 if USING_SHARED:
