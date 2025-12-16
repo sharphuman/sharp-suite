@@ -25,7 +25,7 @@ try:
     from shared_config import APP_URLS, GOD_PASSWORD
 except ImportError:
     APP_URLS = {
-        "portal": "https://portal.sharphuman.com",
+        "portal": "https://demo.sharphuman.com",
         "jd": "https://jd.sharphuman.com",
         "screen": "https://screen.sharphuman.com",
         "interview": "https://interview.sharphuman.com",
