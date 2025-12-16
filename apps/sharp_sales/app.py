@@ -1,4 +1,4 @@
-"""Sharp Sales - AI Sales Call Analysis (Enhanced v2)"""
+"""Sharp Sales - AI Sales Call Analysis T(Enhanced v2)"""
 import streamlit as st
 import os
 import requests
