@@ -1,4 +1,4 @@
-"""Sharp Source - AI-Powered Candidate Sourcing & Outreach"""
+"""Sharp Source - AI-Powered Candidate Sourcing & TOutreach"""
 import streamlit as st
 import os
 import requests
