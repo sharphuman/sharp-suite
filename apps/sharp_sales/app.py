@@ -291,7 +291,7 @@ def init_session():
 
 def check_url_auth():
     if st.session_state.authenticated: return
-    token = st.query_params.get("token")
+    token = st.query_params.get("token") or st.query_params.get("auth")
     if token:
         result = validate_session_token(token)
         if result:
