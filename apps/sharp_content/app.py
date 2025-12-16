@@ -38,7 +38,7 @@ except ImportError:
     ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
     CLAUDE_MODEL = "claude-sonnet-4-20250514"
     APP_URLS = {
-        "portal": "https://portal.sharphuman.com",
+        "portal": "https://demo.sharphuman.com",
         "jd": "https://jd.sharphuman.com",
         "screen": "https://screen.sharphuman.com",
         "interview": "https://interview.sharphuman.com",
