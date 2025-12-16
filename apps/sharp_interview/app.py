@@ -63,7 +63,7 @@ try:
         render_header,
         render_sidebar,
         render_feedback_widget,
-        StatusIndicator,
+        
         COLORS
     )
     USING_SHARED = True
@@ -362,7 +362,7 @@ def init_session():
             st.session_state[k] = v
 
 def check_url_auth():
-    token = st.query_params.get("token") or st.query_params.get("auth")
+    token = st.query_params.get("auth")
     if token and not st.session_state.authenticated:
         user_info = validate_session_token(token)
         if user_info:
@@ -382,7 +382,7 @@ def get_user_email():
 def build_app_url(app_name):
     base = APP_URLS.get(app_name, "")
     token = st.session_state.get("session_token", "")
-    return f"{base}?token={token}" if base and token else base
+    return f"{base}?auth={token}" if base and token else base
 
 # ============================================
 # FILE EXTRACTION (ROBUST)
@@ -1834,39 +1834,15 @@ check_url_auth()
 # Apply styles - use shared or fallback
 if USING_SHARED:
     apply_global_styles()
-else:
-    # Fallback inline styles
-    st.markdown("""<style>
-    @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap');
-    @import url('https://fonts.googleapis.com/icon?family=Material+Icons');
-    *, *::before, *::after { font-family: 'Nunito', sans-serif !important; }
-    .stApp, [data-testid="stAppViewContainer"] { background: #0a0a0f !important; }
-    [data-testid="stHeader"] { background: transparent !important; }
-    section[data-testid="stSidebar"] { background: #0d0d14 !important; border-right: 1px solid rgba(99,102,241,0.2); }
-    section[data-testid="stSidebar"] > div { background: #0d0d14 !important; }
-    h1,h2,h3,h4,h5,h6 { color: #fff !important; }
-    p,span,label,div,li { color: #e5e5e5; }
-    .stTextInput > div > div > input, .stTextArea > div > div > textarea { background: #12121a !important; border: 1px solid rgba(99,102,241,0.3) !important; color: #fff !important; border-radius: 8px !important; }
-    .stButton > button { background: linear-gradient(135deg, #6366f1, #8b5cf6) !important; color: white !important; border: none !important; border-radius: 8px !important; }
-    .stDownloadButton > button { background: #1a1a2e !important; border: 1px solid rgba(99,102,241,0.3) !important; color: white !important; }
-    .stTabs [data-baseweb="tab-list"] { background: transparent !important; border-bottom: 1px solid rgba(99,102,241,0.2); }
-    .stTabs [aria-selected="true"] { color: #fff !important; border-bottom: 2px solid #6366f1 !important; }
-    .input-card { background: #12121a; border: 1px solid rgba(99,102,241,0.2); border-radius: 12px; padding: 20px; margin: 12px 0; }
-    /* Working Status Badge with Logo Spinner */
-    .status-badge { position: fixed; top: 70px; right: 20px; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; padding: 12px 24px 12px 50px; border-radius: 25px; font-weight: 600; z-index: 9999; box-shadow: 0 4px 15px rgba(99,102,241,0.4); }
-    .status-badge::before { content: ''; position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 28px; height: 28px; background: url('https://assets.sharphuman.com/logo_spinner_small.gif') center/contain no-repeat; }
-    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
-    </style>""", unsafe_allow_html=True)
 
 # Auth screen
 if not st.session_state.authenticated:
     c1, c2, c3 = st.columns([1, 1.2, 1])
     with c2:
-        st.markdown("""<div style="text-align:center;padding:60px 0 30px;">
-            <img src="https://sharphuman.com/logo1-3.png" style="width:80px;margin-bottom:20px;">
-            <h1 style="margin:0;">Sharp Interview</h1>
-            <p style="color:#9ca3af;">AI Interview Evaluation</p>
-        </div>""", unsafe_allow_html=True)
+        st.markdown("")  # Spacer
+        st.markdown("## 🎯 Sharp Interview")
+        st.markdown("AI-Powered Interview Evaluation")
+        st.markdown("---")
         t1, t2 = st.tabs(["Log In", "Sign Up"])
         with t1:
             email = st.text_input("Email", key="l_email")
@@ -1921,43 +1897,10 @@ if USING_SHARED:
         user_plan=st.session_state.get('user_plan', 'free'),
         session_token=st.session_state.get('session_token', '')
     )
-else:
-    with st.sidebar:
-        st.markdown(f"""<div style="background:rgba(99,102,241,0.1);border-radius:12px;padding:16px;margin-bottom:20px;">
-            <p style="color:#9ca3af;margin:0;font-size:12px;">Logged in as</p>
-            <p style="color:#fff;margin:4px 0;font-weight:600;">{get_user_email()}</p>
-            <p style="color:#6366f1;margin:0;font-size:12px;text-transform:uppercase;">{st.session_state.get('user_plan','free')} plan</p>
-        </div>""", unsafe_allow_html=True)
-        
-        st.markdown("**Apps**")
-        apps = [("portal", "🏠 Portal"), ("jd", "📝 JD Writer"), ("screen", "🔍 CV Screener"), ("interview", "🎯 Interview"), ("content", "✍️ Content"), ("outreach", "🚀 Outreach"), ("content", "✍️ Content"), ("sales", "💰 Sales"), ]
-        for key, label in apps:
-            if key == "interview":
-                st.markdown(f"<div style='background:linear-gradient(135deg,#6366f1,#8b5cf6);padding:10px 16px;border-radius:8px;text-align:center;margin:4px 0;color:white;font-weight:600;'>{label} ◀</div>", unsafe_allow_html=True)
-            else:
-                st.link_button(label, build_app_url(key), use_container_width=True)
-        
-        if st.session_state.get("is_god"):
-            st.markdown("---")
-            st.link_button("⚙️ Admin", build_app_url("admin"), use_container_width=True)
-        
-        st.markdown("---")
-        if st.button("🚪 Logout", use_container_width=True):
-            for k in list(st.session_state.keys()):
-                del st.session_state[k]
-            st.rerun()
 
 # Header (shared UI or fallback)
 if USING_SHARED:
-    render_header("Sharp Interview", "AI-Powered Interview Evaluation", "🎯")
-else:
-    st.markdown("""<div style="display:flex;align-items:center;gap:16px;padding:20px 0;border-bottom:1px solid rgba(99,102,241,0.2);margin-bottom:30px;">
-        <img src="https://sharphuman.com/logo1-3.png" style="width:50px;">
-        <div>
-            <h1 style="margin:0;font-size:28px;">Sharp Interview</h1>
-            <p style="color:#9ca3af;margin:0;">AI-Powered Interview Evaluation</p>
-        </div>
-    </div>""", unsafe_allow_html=True)
+    render_app_header("Sharp Interview", "AI-Powered Interview Evaluation")
 
 # Show evaluated candidates
 if st.session_state.candidates:
