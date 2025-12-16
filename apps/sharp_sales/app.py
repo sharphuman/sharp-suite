@@ -178,6 +178,61 @@ def log_usage(user_id, session_id, app, action, tokens_used=0):
     try: requests.post(f"{SUPABASE_URL}/rest/v1/usage_logs", headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}", "Content-Type": "application/json", "Prefer": "return=minimal"}, json={"user_id": user_id, "session_id": session_id, "app": app, "action": action, "tokens_used": tokens_used}, timeout=5)
     except: pass
 
+def get_user_usage_count(user_id, app, action=None):
+    """Get the number of times a user has used a specific app/action"""
+    try:
+        query = f"{SUPABASE_URL}/rest/v1/usage_logs?user_id=eq.{user_id}&app=eq.{app}"
+        if action:
+            query += f"&action=eq.{action}"
+        query += "&select=id"
+        
+        r = requests.get(
+            query,
+            headers={
+                "apikey": SUPABASE_ANON_KEY,
+                "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}"
+            },
+            timeout=10
+        )
+        if r.status_code == 200:
+            return len(r.json())
+        return 0
+    except:
+        return 0
+
+def check_trial_limit(app, limit=5):
+    """
+    Check if trial user has exceeded their usage limit.
+    Returns (allowed, usage_count, limit)
+    """
+    # Skip check for non-trial users
+    user_plan = st.session_state.get('user_plan', 'free')
+    if user_plan not in ['trial', '7_day_trial', '7-day-trial', 'free_trial']:
+        return True, 0, limit
+    
+    # Skip check for god users
+    if st.session_state.get('is_god'):
+        return True, 0, limit
+    
+    # Get user ID
+    user_id = st.session_state.user.get("id") if st.session_state.user else None
+    if not user_id:
+        return True, 0, limit  # Can't check without user ID
+    
+    # Get usage count
+    usage_count = get_user_usage_count(user_id, app, action="analyze")
+    
+    return usage_count < limit, usage_count, limit
+
+# Trial limits per app
+TRIAL_LIMITS = {
+    "sales": 5,
+    "interview": 5,
+    "screen": 10,
+    "jd": 10,
+    "content": 10,
+}
+
 def submit_feedback(app, feedback_type, message):
     try:
         r = requests.post(f"{SUPABASE_URL}/rest/v1/user_feedback", headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}", "Content-Type": "application/json", "Prefer": "return=minimal"}, json={"user_id": st.session_state.user.get("id") if st.session_state.user else None, "app": app, "feedback_type": feedback_type, "rating": 4, "message": message, "email": get_user_email()}, timeout=10)
@@ -1131,10 +1186,42 @@ else:
         
         st.markdown('</div>', unsafe_allow_html=True)
     
+    # Check trial limits
+    trial_allowed, trial_usage, trial_limit = check_trial_limit("sales", limit=TRIAL_LIMITS.get("sales", 5))
+    
+    # Show trial usage indicator for trial users
+    user_plan = st.session_state.get('user_plan', 'free')
+    if user_plan in ['trial', '7_day_trial', '7-day-trial', 'free_trial']:
+        remaining = trial_limit - trial_usage
+        if remaining > 0:
+            st.info(f"🎯 **Trial:** {remaining} of {trial_limit} analyses remaining")
+        else:
+            st.warning(f"⚠️ **Trial limit reached:** You've used all {trial_limit} free analyses")
+    
     # Analyze Button
     st.markdown("---")
     
-    if st.button("🚀 Analyze Call", type="primary", use_container_width=True):
+    if not trial_allowed:
+        # Show upgrade prompt instead of analyze button
+        st.markdown("""
+        <div style="background: linear-gradient(135deg, rgba(239,68,68,0.1), rgba(249,115,22,0.1)); 
+                    border: 1px solid rgba(239,68,68,0.3); border-radius: 12px; padding: 24px; text-align: center;">
+            <h3 style="color: #ef4444; margin: 0 0 12px;">🔒 Trial Limit Reached</h3>
+            <p style="color: #e5e5e5; margin: 0 0 16px;">
+                You've used all <strong>5 free analyses</strong> in your trial.<br>
+                Upgrade to continue analyzing sales calls with AI coaching.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.link_button("⬆️ Upgrade Now", "https://sharphuman.com/pricing", type="primary", use_container_width=True)
+        
+        st.markdown("")
+        st.caption("Questions? Contact us at support@sharphuman.com")
+    
+    elif st.button("🚀 Analyze Call", type="primary", use_container_width=True):
         if not transcript or len(transcript.strip()) < 100:
             st.warning("Please provide a transcript (paste or upload). Minimum 100 characters required.")
         else:
@@ -1153,6 +1240,16 @@ else:
                     key_concerns=key_concerns
                 )
                 st.session_state.working_on = None
+                
+                # Log usage for trial tracking
+                if st.session_state.user:
+                    log_usage(
+                        st.session_state.user.get("id"),
+                        st.session_state.session_token,
+                        "sales",
+                        "analyze",
+                        tokens_used=20000  # Approximate
+                    )
             
             if not str(result).startswith("Error"):
                 st.session_state.analysis_result = result
