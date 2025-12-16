@@ -81,7 +81,7 @@ except ImportError as e:
     GOD_PASSWORD = os.environ.get("GOD_PASSWORD", "G0DHum@n101!!!")
     ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
     CLAUDE_MODEL = "claude-sonnet-4-20250514"
-    APP_URLS = {"portal": "https://portal.sharphuman.com", "jd": "https://jd.sharphuman.com", "screen": "https://screen.sharphuman.com", "interview": "https://interview.sharphuman.com", "outreach": "https://outreach.sharphuman.com", "content": "https://content.sharphuman.com", "sales": "https://sales.sharphuman.com", "admin": "https://admin.sharphuman.com"}
+    APP_URLS = {"portal": "https://demo.sharphuman.com", "jd": "https://jd.sharphuman.com", "screen": "https://screen.sharphuman.com", "interview": "https://interview.sharphuman.com", "outreach": "https://outreach.sharphuman.com", "content": "https://content.sharphuman.com", "sales": "https://sales.sharphuman.com", "admin": "https://admin.sharphuman.com"}
     COLORS = {"primary": "#6366f1", "secondary": "#8b5cf6", "success": "#10b981", "warning": "#eab308", "error": "#ef4444"}
 
 FOCUS_AREAS = ["Technical Skills", "Problem Solving", "Communication", "Leadership", "Cultural Fit", "Experience Depth", "Motivation", "Collaboration"]
