@@ -1,4 +1,4 @@
-"""Sharp Outreach - AI-Powered Candidate Sourcing & Engagement"""
+"""Sharp Outreach - AI-Powered Candidate Sourcing & TEngagement"""
 import streamlit as st
 import os
 import requests
