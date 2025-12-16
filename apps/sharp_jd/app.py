@@ -1,4 +1,4 @@
-"""Sharp JD - Professional Job Description Writer with Cross-App Auth"""
+"""Sharp Screen - Advanced CV Screening with Cross-App Auth"""
 import streamlit as st
 import os
 import requests
@@ -7,6 +7,8 @@ import secrets
 import json
 import re
 import io
+import zipfile
+from xml.etree import ElementTree
 import sys
 
 # Add parent directory for shared modules
@@ -52,7 +54,7 @@ def create_session(user_id, email):
         requests.post(f"{SUPABASE_URL}/rest/v1/sessions",
             headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
                      "Content-Type": "application/json", "Prefer": "return=minimal"},
-            json={"user_id": user_id, "token": token, "ip_address": "unknown", "device_hash": "jd",
+            json={"user_id": user_id, "token": token, "ip_address": "unknown", "device_hash": "screen",
                   "is_active": True, "expires_at": (datetime.utcnow() + timedelta(hours=24)).isoformat()}, timeout=10)
     except: pass
     return token
@@ -108,8 +110,9 @@ def log_usage(user_id, session_id, app, action, tokens_used=0):
 def init_session():
     defaults = [
         ('authenticated', False), ('user', None), ('is_god', False), ('session_token', None),
-        ('user_plan', 'free'), ('generated_jd', None), ('jd_metadata', None), ('working_on', None),
-        ('requirements_text', ''), ('enhanced_jd', None), ('copy_to_create', False),
+        ('user_plan', 'free'), ('screening_results', None), ('working_on', None),
+        ('anonymized_result', None), ('selected_candidates', []), ('candidate_statuses', {}),
+        ('comparison_result', None), ('hm_summary', None), ('parsed_data', None),
     ]
     for k, v in defaults:
         if k not in st.session_state:
@@ -137,169 +140,30 @@ def build_app_url(app_name):
     return f"{base}?token={token}" if base and token else base
 
 # ============================================
-# FILE PROCESSING
-# ============================================
-
-def extract_text_from_file(uploaded_file):
-    file_type = uploaded_file.name.split('.')[-1].lower()
-    content = uploaded_file.read()
-    uploaded_file.seek(0)
-    
-    if file_type == 'txt':
-        return content.decode('utf-8', errors='ignore')
-    elif file_type == 'pdf':
-        try:
-            import fitz
-            pdf = fitz.open(stream=content, filetype="pdf")
-            return "".join([page.get_text() for page in pdf])
-        except:
-            return re.sub(r'[^\x20-\x7E\n]', ' ', content.decode('utf-8', errors='ignore'))
-    elif file_type in ['docx', 'doc']:
-        try:
-            from docx import Document
-            doc = Document(io.BytesIO(content))
-            return '\n'.join([p.text for p in doc.paragraphs])
-        except:
-            return "[DOCX requires python-docx]"
-    elif file_type == 'json':
-        try:
-            data = json.loads(content.decode('utf-8'))
-            if isinstance(data, dict):
-                for key in ['description', 'job_description', 'requirements', 'content', 'text']:
-                    if key in data:
-                        return data[key]
-            return json.dumps(data, indent=2)
-        except:
-            return content.decode('utf-8', errors='ignore')
-    return content.decode('utf-8', errors='ignore')
-
-# ============================================
-# EXPORT FUNCTIONS
-# ============================================
-
-def generate_docx_bytes(jd_text, metadata):
-    try:
-        from docx import Document
-        from docx.enum.text import WD_ALIGN_PARAGRAPH
-        doc = Document()
-        title = doc.add_heading(metadata.get('job_title', 'Job Description'), 0)
-        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        if metadata.get('company'):
-            p = doc.add_paragraph(metadata.get('company'))
-            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        doc.add_paragraph()
-        for line in jd_text.split('\n'):
-            if line.strip():
-                doc.add_paragraph(line)
-        buffer = io.BytesIO()
-        doc.save(buffer)
-        buffer.seek(0)
-        return buffer.getvalue()
-    except:
-        return None
-
-def generate_html(jd_text, metadata, platform="General"):
-    title = metadata.get('job_title', 'Job Description')
-    company = metadata.get('company', '')
-    content = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', jd_text)
-    content = re.sub(r'\n', '<br>', content)
-    
-    return f"""<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>{title}</title>
-<style>
-body{{font-family:'Segoe UI',Arial,sans-serif;max-width:800px;margin:40px auto;padding:40px;color:#333;line-height:1.6;}}
-.header{{border-bottom:3px solid #6366f1;padding-bottom:20px;margin-bottom:30px;}}
-h1{{color:#1f2937;margin:0 0 10px;font-size:28px;}}
-.company{{color:#6366f1;font-size:18px;font-weight:600;}}
-.meta{{color:#6b7280;font-size:14px;margin-top:10px;}}
-.footer{{margin-top:40px;padding-top:20px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:12px;text-align:right;}}
-@media print{{body{{margin:20px;padding:20px;}}}}
-</style></head><body>
-<div class="header"><h1>{title}</h1>{f'<div class="company">{company}</div>' if company else ''}
-<div class="meta">{metadata.get('experience_level', '')} | {metadata.get('remote_type', '')} | {metadata.get('industry', '')}</div></div>
-<div class="content">{content}</div>
-<div class="footer">Generated by Sharp JD | {datetime.now().strftime('%Y-%m-%d')}</div>
-</body></html>"""
-
-def generate_ats_json(jd_text, metadata):
-    return json.dumps({
-        "job_posting": {
-            "title": metadata.get('job_title', ''),
-            "company": metadata.get('company', ''),
-            "location": metadata.get('remote_type', ''),
-            "experience_level": metadata.get('experience_level', ''),
-            "industry": metadata.get('industry', ''),
-            "posted_date": datetime.now().strftime('%Y-%m-%d'),
-        },
-        "description": {"full_text": jd_text},
-        "metadata": {"source": "Sharp JD", "generated_at": datetime.now().isoformat()}
-    }, indent=2)
-
-# ============================================
 # DATABASE FUNCTIONS
 # ============================================
 
-def save_jd_to_history(metadata, generated_jd, seo_score, tokens_used):
-    user_id = st.session_state.user.get("id") if st.session_state.user else None
-    if not user_id or user_id == "god":
-        return None, "History not available in GOD mode"
-    
-    payload = {
-        "user_id": user_id,
-        "job_title": metadata.get('job_title', 'Untitled'),
-        "company": metadata.get('company'),
-        "experience_level": metadata.get('experience_level'),
-        "remote_type": metadata.get('remote_type'),
-        "industry": metadata.get('industry'),
-        "tone": metadata.get('tone'),
-        "user_type": metadata.get('user_type'),
-        "word_count": len(generated_jd.split()),
-        "generated_jd": generated_jd,
-        "seo_ats_score": seo_score,
-        "tokens_used": tokens_used or 0
-    }
-    payload = {k: v for k, v in payload.items() if v is not None}
-    
-    try:
-        r = requests.post(f"{SUPABASE_URL}/rest/v1/jd_history",
-            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
-                     "Content-Type": "application/json", "Prefer": "return=representation"},
-            json=payload, timeout=10)
-        if r.status_code in [200, 201]:
-            return r.json()[0] if r.json() else {"id": "saved"}, None
-        try:
-            err = r.json()
-            return None, err.get('message', str(err))
-        except:
-            return None, f"Status {r.status_code}"
-    except Exception as e:
-        return None, str(e)
-
 def get_jd_history(limit=50):
     user_id = st.session_state.user.get("id") if st.session_state.user else None
-    if not user_id or user_id == "god": 
-        return []
+    if not user_id or user_id == "god": return []
     try:
         r = requests.get(f"{SUPABASE_URL}/rest/v1/jd_history?user_id=eq.{user_id}&order=created_at.desc&limit={limit}",
             headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}"}, timeout=10)
-        if r.status_code == 200:
-            return r.json()
-        return []
-    except:
-        return []
+        return r.json() if r.status_code == 200 else []
+    except: return []
 
-def delete_jd_history(jd_id):
+def save_screen_history(jd_id, jd_text, candidates_input, result, candidates_count, tokens_used):
+    user_id = st.session_state.user.get("id") if st.session_state.user else None
+    if not user_id or user_id == "god": return None
     try:
-        requests.delete(f"{SUPABASE_URL}/rest/v1/jd_history?id=eq.{jd_id}",
-            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}"}, timeout=5)
-    except: pass
-
-def toggle_favorite(jd_id, is_favorite):
-    try:
-        requests.patch(f"{SUPABASE_URL}/rest/v1/jd_history?id=eq.{jd_id}",
-            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}", "Content-Type": "application/json"},
-            json={"is_favorite": is_favorite}, timeout=5)
-    except: pass
+        r = requests.post(f"{SUPABASE_URL}/rest/v1/screen_history",
+            headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+                     "Content-Type": "application/json", "Prefer": "return=representation"},
+            json={"user_id": user_id, "jd_history_id": jd_id, "job_description": jd_text[:5000] if jd_text else None,
+                  "candidates_input": candidates_input[:5000] if candidates_input else None, "screening_result": result,
+                  "candidates_count": candidates_count, "tokens_used": tokens_used}, timeout=10)
+        return r.json()[0] if r.status_code in [200, 201] and r.json() else None
+    except: return None
 
 def submit_feedback(app, feedback_type, message):
     try:
@@ -312,44 +176,655 @@ def submit_feedback(app, feedback_type, message):
     except: return False
 
 # ============================================
+# FILE PROCESSING
+# ============================================
+
+def is_readable_text(text):
+    """Check if extracted text is actually readable"""
+    if not text or len(text.strip()) < 10:
+        return False
+    alpha_chars = sum(1 for c in text if c.isalpha())
+    alpha_ratio = alpha_chars / len(text) if len(text) > 0 else 0
+    return alpha_ratio > 0.3
+
+def clean_extracted_text(text):
+    """Clean up extracted text"""
+    if not text:
+        return ""
+    cleaned = ''.join(c if c.isprintable() or c in '\n\r\t' else ' ' for c in text)
+    cleaned = re.sub(r'[ \t]+', ' ', cleaned)
+    cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
+    return cleaned.strip()
+
+def extract_text_from_file(uploaded_file):
+    file_type = uploaded_file.name.split('.')[-1].lower()
+    content = uploaded_file.read()
+    uploaded_file.seek(0)
+    
+    if file_type == 'txt':
+        return clean_extracted_text(content.decode('utf-8', errors='ignore'))
+    
+    elif file_type == 'pdf':
+        extracted_text = ""
+        
+        # Try PyMuPDF with multiple methods
+        try:
+            import fitz
+            pdf = fitz.open(stream=content, filetype="pdf")
+            text_parts = []
+            for page in pdf:
+                page_text = page.get_text("text")
+                if not page_text or not page_text.strip():
+                    page_text = page.get_text("text", flags=fitz.TEXT_PRESERVE_WHITESPACE)
+                if not page_text or not page_text.strip():
+                    blocks = page.get_text("blocks")
+                    page_text = "\n".join([b[4] for b in blocks if b[6] == 0])
+                if page_text and page_text.strip():
+                    text_parts.append(page_text)
+            pdf.close()
+            extracted_text = "\n".join(text_parts)
+        except:
+            pass
+        
+        if extracted_text and extracted_text.strip():
+            cleaned = clean_extracted_text(extracted_text)
+            if is_readable_text(cleaned):
+                return cleaned
+        
+        # Try pdfplumber
+        try:
+            import pdfplumber
+            with pdfplumber.open(io.BytesIO(content)) as pdf:
+                text_parts = [page.extract_text() for page in pdf.pages if page.extract_text()]
+                extracted_text = "\n".join(text_parts)
+                if extracted_text:
+                    cleaned = clean_extracted_text(extracted_text)
+                    if is_readable_text(cleaned):
+                        return cleaned
+        except:
+            pass
+        
+        # Last resort
+        try:
+            import fitz
+            pdf = fitz.open(stream=content, filetype="pdf")
+            text_parts = [page.get_text() for page in pdf]
+            pdf.close()
+            result = clean_extracted_text("\n".join(text_parts))
+            if len(result) > 50:
+                return result
+        except:
+            pass
+        
+        return "[PDF extraction failed - please paste content directly]"
+    
+    elif file_type in ['docx', 'doc']:
+        try:
+            from docx import Document
+            doc = Document(io.BytesIO(content))
+            paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
+            for table in doc.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        if cell.text.strip():
+                            paragraphs.append(cell.text.strip())
+            if paragraphs:
+                return clean_extracted_text('\n\n'.join(paragraphs))
+        except:
+            pass
+        
+        try:
+            with zipfile.ZipFile(io.BytesIO(content)) as z:
+                if 'word/document.xml' in z.namelist():
+                    xml_content = z.read('word/document.xml')
+                    tree = ElementTree.fromstring(xml_content)
+                    texts = [elem.text for elem in tree.iter() if elem.text and elem.text.strip()]
+                    if texts:
+                        return clean_extracted_text(' '.join(texts))
+        except:
+            pass
+        
+        return "[DOCX extraction failed - please paste content directly]"
+    elif file_type == 'json':
+        try:
+            data = json.loads(content.decode('utf-8'))
+            if isinstance(data, list):
+                return '\n---\n'.join([json.dumps(item, indent=2) for item in data])
+            return json.dumps(data, indent=2)
+        except:
+            return content.decode('utf-8', errors='ignore')
+    return content.decode('utf-8', errors='ignore')
+
+def parse_json_candidates(json_text):
+    try:
+        data = json.loads(json_text)
+        candidates = []
+        items = data if isinstance(data, list) else data.get('candidates', [data])
+        for item in items:
+            candidates.append({
+                'name': item.get('name') or item.get('candidateName') or item.get('full_name', 'Unknown'),
+                'email': item.get('email') or item.get('emailAddress', ''),
+                'skills': item.get('skills') or item.get('skillSet', []),
+                'summary': item.get('summary') or item.get('professionalSummary', ''),
+            })
+        return candidates
+    except:
+        return None
+
+# ============================================
 # CLAUDE API
 # ============================================
 
-def call_claude(prompt, max_tokens=3000):
+def call_claude(prompt, max_tokens=4000, action="screen"):
     if not ANTHROPIC_API_KEY:
         return "Error: ANTHROPIC_API_KEY not set", 0
     try:
         r = requests.post("https://api.anthropic.com/v1/messages",
             headers={"x-api-key": ANTHROPIC_API_KEY, "Content-Type": "application/json", "anthropic-version": "2023-06-01"},
-            json={"model": "claude-sonnet-4-20250514", "max_tokens": max_tokens, "messages": [{"role": "user", "content": prompt}]}, timeout=120)
+            json={"model": "claude-sonnet-4-20250514", "max_tokens": max_tokens, "messages": [{"role": "user", "content": prompt}]}, timeout=180)
         if r.status_code == 200:
             text = r.json()["content"][0]["text"]
             tokens = (len(prompt) + len(text)) // 4
             if st.session_state.user:
-                log_usage(st.session_state.user.get("id"), st.session_state.get("session_token"), "jd", "generate", tokens)
+                log_usage(st.session_state.user.get("id"), st.session_state.get("session_token"), "screen", action, tokens)
             return text, tokens
         return f"Error: {r.status_code}", 0
     except Exception as e:
         return f"Error: {str(e)}", 0
 
-def calculate_seo_score(jd_text, metadata):
-    score = 50
-    jd_lower = jd_text.lower()
-    if metadata.get("job_title", "").lower() in jd_lower: score += 10
-    for kw in ["responsibilities", "requirements", "qualifications", "benefits"]:
-        if kw in jd_lower: score += 3
-    words = len(jd_text.split())
-    if 300 <= words <= 800: score += 10
-    elif 200 <= words <= 1000: score += 5
-    if any(v in jd_lower for v in ["manage", "lead", "develop", "create", "build"]): score += 5
-    if "equal opportunity" in jd_lower or "diversity" in jd_lower: score += 5
-    return min(max(score, 1), 100)
+# ============================================
+# SCREENING FUNCTIONS
+# ============================================
+
+def screen_candidates(jd_text, cvs_text, options):
+    prompt = f"""You are an expert technical recruiter. Analyze candidates against this JD with DETAILED categorized skill breakdowns.
+
+## JOB DESCRIPTION:
+{jd_text}
+
+## CANDIDATES (separated by ---):
+{cvs_text}
+
+## OPTIONS:
+- Bias-Free Mode: {options.get('bias_free', True)}
+- AI Detection: {options.get('ai_detection', True)}
+- Salary Estimate: {options.get('salary_estimate', True)}
+
+## OUTPUT (JSON):
+```json
+{{
+    "screening_summary": {{
+        "total_candidates": <number>,
+        "recommended_for_interview": <number>,
+        "maybe": <number>,
+        "not_recommended": <number>,
+        "time_saved_minutes": <number>,
+        "bias_mitigation_score": <0-100>
+    }},
+    "candidates": [
+        {{
+            "rank": <number>,
+            "identifier": "<name or Candidate A/B/C>",
+            "match_score": <0-100>,
+            "skills_breakdown": {{
+                "technical": {{"matched": <n>, "total": <n>, "details": ["skill1"]}},
+                "leadership": {{"matched": <n>, "total": <n>, "details": []}},
+                "soft_skills": {{"matched": <n>, "total": <n>, "details": []}},
+                "industry_experience": {{"matched": <n>, "total": <n>, "details": []}}
+            }},
+            "experience_years": <number>,
+            "salary_alignment": "<Within Range | Above | Below | Unknown>",
+            "why_this_score": "<2-3 sentences>",
+            "strengths": ["<str1>", "<str2>"],
+            "concerns": ["<concern1>"],
+            "ai_written_probability": <0-100>,
+            "recommended_action": "<Phone Screen | Assessment | Reject>",
+            "rejection_reason": "<reason if rejected>",
+            "next_steps": "<steps>",
+            "hiring_manager_summary": "<3 bullet points>"
+        }}
+    ],
+    "batch_insights": {{
+        "strongest_candidate_summary": "<summary>",
+        "common_gaps": ["<gap1>"],
+        "hiring_recommendation": "<recommendation>"
+    }}
+}}
+```"""
+    return call_claude(prompt, max_tokens=6000, action="screen_batch")
+
+def compare_candidates(candidates_data, jd_summary=""):
+    prompt = f"""Create a side-by-side comparison:
+
+## CANDIDATES:
+{json.dumps(candidates_data, indent=2)}
+
+## OUTPUT (JSON):
+```json
+{{
+    "comparison_table": {{
+        "headers": ["Metric", "Candidate 1", "Candidate 2", "Candidate 3"],
+        "rows": [
+            ["Experience", "<val>", "<val>", "<val>"],
+            ["Match Score", "<val>%", "<val>%", "<val>%"],
+            ["Technical", "<X/Y>", "<X/Y>", "<X/Y>"],
+            ["Leadership", "<X/Y>", "<X/Y>", "<X/Y>"],
+            ["Salary", "<status>", "<status>", "<status>"],
+            ["AI Score", "<val>%", "<val>%", "<val>%"]
+        ]
+    }},
+    "winner_recommendation": "<which and why>",
+    "interview_strategy": "<how to differentiate>"
+}}
+```"""
+    return call_claude(prompt, max_tokens=2000, action="compare")
+
+def generate_email_template(candidate, template_type, job_title=""):
+    templates = {
+        "phone_screen": f"Draft phone screen invite for {candidate.get('identifier')} for {job_title}. Include: personalized line about their strengths ({', '.join(candidate.get('strengths', [])[:2])}), request for 20-30 min call, [CALENDAR_LINK] placeholder.",
+        "skills_test": f"Draft skills assessment email for {candidate.get('identifier')}. Areas to validate: {', '.join(candidate.get('concerns', [])[:2])}. Professional, encouraging tone.",
+        "rejection": f"Draft GDPR-compliant rejection for {candidate.get('identifier')}. Reason: {candidate.get('rejection_reason', 'skills mismatch')}. Kind, professional.",
+        "linkedin": f"Draft SHORT LinkedIn message (<300 chars) for {candidate.get('identifier')}. Reference: {candidate.get('strengths', ['experience'])[0]}."
+    }
+    return call_claude(templates.get(template_type, templates["phone_screen"]), max_tokens=800, action=f"email_{template_type}")
+
+def generate_hiring_manager_summary(candidates_data, bias_free=True):
+    prompt = f"""Generate a Hiring Manager briefing summary. Return ONLY the formatted summary, NOT JSON.
+
+## CANDIDATES:
+{json.dumps(candidates_data, indent=2)}
+
+{"Remove all PII (use Candidate A, B, C)" if bias_free else "Include names"}
+
+## FORMAT YOUR RESPONSE LIKE THIS:
+
+EXECUTIVE SUMMARY
+[1-2 sentence overview of the candidate pool]
+
+CANDIDATE RECOMMENDATIONS
+
+[For each candidate:]
+CANDIDATE [A/B/C or Name]
+• Fit: [What makes them a good/poor fit]
+• Gaps: [Key concerns or missing skills]  
+• Action: [Recommended next step]
+• Interview Focus: [What to probe in interview]
+
+OVERALL RECOMMENDATION
+[Which candidate(s) to prioritize and why]
+
+RISK ASSESSMENT
+[Any hiring risks to consider]
+
+Write in clear, professional prose. No JSON."""
+    return call_claude(prompt, max_tokens=2000, action="hm_summary")
+
+def anonymize_cv(cv_text, options):
+    prompt = f"""Anonymize this CV:
+
+{cv_text}
+
+{"Convert dates to relative time" if options.get('time_based') else "Keep dates"}
+Replace universities with tiers, companies with descriptors.
+
+## OUTPUT (JSON):
+```json
+{{
+    "anonymized_cv": "<text>",
+    "items_removed": {{"names": [], "emails": [], "phones": [], "universities": [], "companies": []}},
+    "anonymization_score": <0-100>
+}}
+```"""
+    return call_claude(prompt, max_tokens=3000, action="anonymize")
+
+def estimate_salary(cv_text, jd_text, location):
+    prompt = f"""Estimate salary:
+
+JOB: {jd_text[:2000]}
+CV: {cv_text[:3000]}
+LOCATION: {location}
+
+## OUTPUT (JSON):
+```json
+{{
+    "estimated_range": {{"low": <num>, "mid": <num>, "high": <num>}},
+    "confidence": "<Low|Medium|High>",
+    "factors_increasing": ["<factor>"],
+    "factors_decreasing": ["<factor>"],
+    "market_context": "<note>"
+}}
+```"""
+    return call_claude(prompt, max_tokens=1500, action="salary")
+
+# ============================================
+# PDF GENERATION (Real PDF using reportlab)
+# ============================================
+
+def generate_pdf_bytes(data, title="CV Screening Report"):
+    """Generate actual PDF file using reportlab"""
+    try:
+        from reportlab.lib.pagesizes import letter, A4
+        from reportlab.lib import colors
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import inch
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, HRFlowable
+        from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+        
+        if isinstance(data, str):
+            data = json.loads(data)
+        
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch)
+        
+        styles = getSampleStyleSheet()
+        
+        # Custom styles
+        title_style = ParagraphStyle('CustomTitle', parent=styles['Title'], fontSize=24, textColor=colors.HexColor('#6366f1'), spaceAfter=12)
+        heading_style = ParagraphStyle('CustomHeading', parent=styles['Heading1'], fontSize=16, textColor=colors.HexColor('#1f2937'), spaceBefore=20, spaceAfter=10)
+        subheading_style = ParagraphStyle('CustomSubheading', parent=styles['Heading2'], fontSize=14, textColor=colors.HexColor('#6366f1'), spaceBefore=15, spaceAfter=8)
+        body_style = ParagraphStyle('CustomBody', parent=styles['Normal'], fontSize=10, textColor=colors.HexColor('#374151'), spaceAfter=6)
+        small_style = ParagraphStyle('Small', parent=styles['Normal'], fontSize=9, textColor=colors.HexColor('#6b7280'))
+        green_style = ParagraphStyle('Green', parent=styles['Normal'], fontSize=10, textColor=colors.HexColor('#059669'))
+        red_style = ParagraphStyle('Red', parent=styles['Normal'], fontSize=10, textColor=colors.HexColor('#dc2626'))
+        score_high = ParagraphStyle('ScoreHigh', parent=styles['Normal'], fontSize=20, textColor=colors.HexColor('#10b981'), alignment=TA_CENTER)
+        score_med = ParagraphStyle('ScoreMed', parent=styles['Normal'], fontSize=20, textColor=colors.HexColor('#f59e0b'), alignment=TA_CENTER)
+        score_low = ParagraphStyle('ScoreLow', parent=styles['Normal'], fontSize=20, textColor=colors.HexColor('#ef4444'), alignment=TA_CENTER)
+        
+        story = []
+        
+        # Header
+        story.append(Paragraph("📊 CV Screening Report", title_style))
+        story.append(Paragraph(f"{title} | Generated: {datetime.now().strftime('%B %d, %Y at %I:%M %p')}", small_style))
+        story.append(Spacer(1, 20))
+        story.append(HRFlowable(width="100%", thickness=2, color=colors.HexColor('#6366f1')))
+        story.append(Spacer(1, 20))
+        
+        summary = data.get('screening_summary', {})
+        candidates = data.get('candidates', [])
+        insights = data.get('batch_insights', {})
+        
+        # Summary table
+        story.append(Paragraph("Executive Summary", heading_style))
+        
+        summary_data = [
+            ['Total Candidates', 'Recommended', 'Maybe', 'Not Recommended', 'Time Saved'],
+            [
+                str(summary.get('total_candidates', '?')),
+                str(summary.get('recommended_for_interview', '?')),
+                str(summary.get('maybe', '?')),
+                str(summary.get('not_recommended', '?')),
+                f"~{summary.get('time_saved_minutes', '?')} min"
+            ]
+        ]
+        
+        summary_table = Table(summary_data, colWidths=[1.4*inch]*5)
+        summary_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#6366f1')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('FONTSIZE', (0, 1), (-1, -1), 14),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('TOPPADDING', (0, 1), (-1, -1), 15),
+            ('BOTTOMPADDING', (0, 1), (-1, -1), 15),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#f3f4f6')),
+            ('TEXTCOLOR', (1, 1), (1, 1), colors.HexColor('#10b981')),
+            ('TEXTCOLOR', (2, 1), (2, 1), colors.HexColor('#f59e0b')),
+            ('TEXTCOLOR', (3, 1), (3, 1), colors.HexColor('#ef4444')),
+            ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#e5e7eb')),
+            ('ROUNDEDCORNERS', [5, 5, 5, 5]),
+        ]))
+        story.append(summary_table)
+        story.append(Spacer(1, 30))
+        
+        # Candidates
+        story.append(Paragraph("Candidate Rankings", heading_style))
+        
+        for c in candidates:
+            score = c.get('match_score', 0)
+            skills = c.get('skills_breakdown', {})
+            
+            # Candidate header
+            story.append(Paragraph(f"#{c.get('rank', '?')} — {c.get('identifier', 'Unknown')}", subheading_style))
+            
+            # Score and skills table
+            score_color = '#10b981' if score >= 70 else '#f59e0b' if score >= 50 else '#ef4444'
+            
+            skills_data = [
+                ['Match Score', 'Technical', 'Leadership', 'Soft Skills', 'Experience'],
+                [
+                    f"{score}%",
+                    f"{skills.get('technical', {}).get('matched', '?')}/{skills.get('technical', {}).get('total', '?')}",
+                    f"{skills.get('leadership', {}).get('matched', '?')}/{skills.get('leadership', {}).get('total', '?')}",
+                    f"{skills.get('soft_skills', {}).get('matched', '?')}/{skills.get('soft_skills', {}).get('total', '?')}",
+                    f"{c.get('experience_years', '?')} yrs"
+                ]
+            ]
+            
+            skills_table = Table(skills_data, colWidths=[1.4*inch]*5)
+            skills_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f9fafb')),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 9),
+                ('FONTSIZE', (0, 1), (-1, -1), 12),
+                ('TEXTCOLOR', (0, 1), (0, 1), colors.HexColor(score_color)),
+                ('FONTNAME', (0, 1), (0, 1), 'Helvetica-Bold'),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+                ('TOPPADDING', (0, 0), (-1, -1), 10),
+                ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#e5e7eb')),
+            ]))
+            story.append(skills_table)
+            story.append(Spacer(1, 10))
+            
+            # Assessment
+            story.append(Paragraph(f"<b>Assessment:</b> {c.get('why_this_score', 'N/A')}", body_style))
+            
+            # Strengths
+            strengths = c.get('strengths', [])
+            if strengths:
+                story.append(Paragraph(f"<b>✓ Strengths:</b> {', '.join(strengths)}", green_style))
+            
+            # Concerns
+            concerns = c.get('concerns', [])
+            if concerns:
+                story.append(Paragraph(f"<b>⚠ Concerns:</b> {', '.join(concerns)}", red_style))
+            
+            # Recommendation
+            story.append(Paragraph(f"<b>→ Recommendation:</b> {c.get('recommended_action', 'N/A')}", body_style))
+            story.append(Paragraph(f"<b>Next Steps:</b> {c.get('next_steps', 'N/A')}", small_style))
+            
+            story.append(Spacer(1, 5))
+            story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#e5e7eb')))
+            story.append(Spacer(1, 15))
+        
+        # Insights
+        if insights:
+            story.append(Paragraph("Batch Insights", heading_style))
+            story.append(Paragraph(f"<b>Top Candidate:</b> {insights.get('strongest_candidate_summary', 'N/A')}", body_style))
+            story.append(Paragraph(f"<b>Common Gaps:</b> {', '.join(insights.get('common_gaps', []))}", body_style))
+            story.append(Paragraph(f"<b>Hiring Recommendation:</b> {insights.get('hiring_recommendation', 'N/A')}", body_style))
+        
+        # Footer
+        story.append(Spacer(1, 40))
+        story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#e5e7eb')))
+        story.append(Spacer(1, 10))
+        story.append(Paragraph("Generated by Sharp Screen | Sharp Human AI Recruiting Suite", small_style))
+        story.append(Paragraph("This report is confidential and intended for internal use only.", small_style))
+        
+        doc.build(story)
+        buffer.seek(0)
+        return buffer.getvalue()
+    
+    except ImportError:
+        # Fallback: Return HTML if reportlab not installed
+        return None
+    except Exception as e:
+        return None
+
+def generate_csv_report(data):
+    try:
+        if isinstance(data, str):
+            data = json.loads(data)
+        candidates = data.get('candidates', [])
+        lines = ["Rank,Identifier,Score,Technical,Leadership,Soft Skills,Experience,Salary,AI Score,Action"]
+        for c in candidates:
+            sk = c.get('skills_breakdown', {})
+            lines.append(f"{c.get('rank','')},{c.get('identifier','')},{c.get('match_score','')},{sk.get('technical',{}).get('matched','?')}/{sk.get('technical',{}).get('total','?')},{sk.get('leadership',{}).get('matched','?')}/{sk.get('leadership',{}).get('total','?')},{sk.get('soft_skills',{}).get('matched','?')}/{sk.get('soft_skills',{}).get('total','?')},{c.get('experience_years','')},{c.get('salary_alignment','')},{c.get('ai_written_probability','')},{c.get('recommended_action','')}")
+        return '\n'.join(lines)
+    except:
+        return "Error"
+
+# ============================================
+# DISPLAY HELPERS
+# ============================================
+
+def display_candidate_rich(c):
+    """Display a candidate with rich formatting"""
+    score = c.get('match_score', 0)
+    skills = c.get('skills_breakdown', {})
+    identifier = c.get('identifier', 'Unknown')
+    
+    # Score color
+    if score >= 70:
+        score_color = "#10b981"
+        score_bg = "rgba(16,185,129,0.1)"
+        recommendation_badge = "🟢 Recommended"
+    elif score >= 50:
+        score_color = "#f59e0b"
+        score_bg = "rgba(245,158,11,0.1)"
+        recommendation_badge = "🟡 Maybe"
+    else:
+        score_color = "#ef4444"
+        score_bg = "rgba(239,68,68,0.1)"
+        recommendation_badge = "🔴 Not Recommended"
+    
+    # Main card
+    st.markdown(f"""
+    <div style="background:#12121a;border:1px solid rgba(99,102,241,0.3);border-radius:16px;padding:24px;margin:20px 0;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+            <div style="display:flex;align-items:center;gap:12px;">
+                <span style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;padding:8px 16px;border-radius:20px;font-weight:bold;">#{c.get('rank', '?')}</span>
+                <span style="font-size:20px;font-weight:bold;color:white;">{identifier}</span>
+                <span style="background:{score_bg};color:{score_color};padding:4px 12px;border-radius:12px;font-size:12px;">{recommendation_badge}</span>
+            </div>
+            <div style="text-align:right;">
+                <span style="font-size:36px;font-weight:bold;color:{score_color};">{score}%</span>
+                <p style="color:#9ca3af;margin:0;font-size:12px;">Match Score</p>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Skills breakdown in columns
+    sk_cols = st.columns(5)
+    skill_items = [
+        ("💻 Technical", skills.get('technical', {})),
+        ("👔 Leadership", skills.get('leadership', {})),
+        ("🤝 Soft Skills", skills.get('soft_skills', {})),
+        ("🏢 Industry", skills.get('industry_experience', {})),
+        ("📅 Experience", {"value": f"{c.get('experience_years', '?')} yrs"})
+    ]
+    
+    for col, (label, skill_data) in zip(sk_cols, skill_items):
+        with col:
+            if 'value' in skill_data:
+                value = skill_data['value']
+            else:
+                matched = skill_data.get('matched', '?')
+                total = skill_data.get('total', '?')
+                value = f"{matched}/{total}"
+            
+            st.markdown(f"""
+            <div style="background:rgba(99,102,241,0.1);border-radius:12px;padding:16px;text-align:center;">
+                <p style="color:#9ca3af;margin:0;font-size:11px;">{label}</p>
+                <p style="color:white;font-size:20px;font-weight:bold;margin:4px 0;">{value}</p>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    # Assessment section
+    st.markdown("#### 📋 Assessment")
+    st.markdown(f"**Why this score:** {c.get('why_this_score', 'N/A')}")
+    
+    # Strengths and Concerns in columns
+    str_col, con_col = st.columns(2)
+    with str_col:
+        st.markdown("**✅ Strengths**")
+        for s in c.get('strengths', []):
+            st.markdown(f"<span style='background:rgba(16,185,129,0.2);color:#10b981;padding:4px 10px;border-radius:8px;margin:2px;display:inline-block;font-size:13px;'>{s}</span>", unsafe_allow_html=True)
+    
+    with con_col:
+        st.markdown("**⚠️ Concerns**")
+        for s in c.get('concerns', []):
+            st.markdown(f"<span style='background:rgba(239,68,68,0.2);color:#ef4444;padding:4px 10px;border-radius:8px;margin:2px;display:inline-block;font-size:13px;'>{s}</span>", unsafe_allow_html=True)
+    
+    # Additional info
+    info_col1, info_col2 = st.columns(2)
+    with info_col1:
+        st.markdown(f"**💰 Salary Alignment:** {c.get('salary_alignment', 'Unknown')}")
+    with info_col2:
+        ai_prob = c.get('ai_written_probability', 0)
+        ai_color = "#ef4444" if ai_prob > 50 else "#f59e0b" if ai_prob > 30 else "#10b981"
+        st.markdown(f"**🤖 AI Detection:** <span style='color:{ai_color}'>{ai_prob}%</span>", unsafe_allow_html=True)
+    
+    # Recommendation box
+    st.markdown(f"""
+    <div style="background:linear-gradient(135deg,rgba(99,102,241,0.1),rgba(139,92,246,0.1));border-left:4px solid #6366f1;padding:16px;border-radius:0 12px 12px 0;margin:16px 0;">
+        <p style="color:#a5b4fc;margin:0 0 4px 0;font-size:12px;text-transform:uppercase;">Recommended Action</p>
+        <p style="color:white;font-size:16px;font-weight:bold;margin:0;">{c.get('recommended_action', 'N/A')}</p>
+        <p style="color:#9ca3af;margin:8px 0 0 0;font-size:13px;">{c.get('next_steps', '')}</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    return identifier, score
+
+def display_hm_summary_rich(summary_text):
+    """Display hiring manager summary with rich formatting"""
+    if not summary_text:
+        return
+    
+    # Clean up any JSON artifacts
+    text = summary_text.strip()
+    if text.startswith('```'):
+        text = re.sub(r'```json?\s*', '', text)
+        text = re.sub(r'```\s*$', '', text)
+    
+    # Try to parse as JSON first
+    try:
+        data = json.loads(text)
+        # Format JSON data nicely
+        st.markdown("#### 📊 Executive Summary")
+        st.info(data.get('executive_summary', ''))
+        
+        st.markdown("#### 👥 Candidate Recommendations")
+        for cand in data.get('candidates', []):
+            with st.container():
+                st.markdown(f"**{cand.get('identifier', 'Candidate')}**")
+                st.markdown(f"• **Fit:** {cand.get('fit', cand.get('fit_assessment', 'N/A'))}")
+                st.markdown(f"• **Gaps:** {cand.get('gaps', cand.get('key_gaps', 'N/A'))}")
+                st.markdown(f"• **Action:** {cand.get('action', cand.get('recommended_action', 'N/A'))}")
+                st.markdown("---")
+        
+        st.markdown("#### 🎯 Overall Recommendation")
+        st.success(data.get('overall_recommendation', ''))
+        
+        if data.get('risk_assessment'):
+            st.markdown("#### ⚠️ Risk Assessment")
+            st.warning(data.get('risk_assessment', ''))
+    except:
+        # Display as formatted text
+        st.markdown(f"""
+        <div style="background:#12121a;border:1px solid rgba(99,102,241,0.2);border-radius:12px;padding:24px;">
+            <pre style="white-space:pre-wrap;color:#e5e5e5;font-family:inherit;margin:0;">{text}</pre>
+        </div>
+        """, unsafe_allow_html=True)
 
 # ============================================
 # MAIN APP
 # ============================================
 
-st.set_page_config(page_title="Sharp JD", page_icon="📝", layout="wide")
+st.set_page_config(page_title="Sharp Screen", page_icon="🔍", layout="wide")
 init_session()
 check_url_auth()
 
@@ -359,83 +834,66 @@ if USING_SHARED:
     apply_global_styles()
     render_top_banner(show_cta=True, cta_text="Book a Demo")
 
-# Comprehensive styles - hide "key" text, proper theming
+# Styles
 st.markdown("""<style>
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap');
 
 *, *::before, *::after { font-family: 'Nunito', sans-serif !important; box-sizing: border-box; }
 
-/* App background */
 .stApp, [data-testid="stAppViewContainer"] { background: #0a0a0f !important; }
 [data-testid="stHeader"] { background: transparent !important; }
 
-/* Sidebar */
 section[data-testid="stSidebar"] { background: #0d0d14 !important; border-right: 1px solid rgba(99,102,241,0.2); }
 section[data-testid="stSidebar"] > div { background: #0d0d14 !important; }
 section[data-testid="stSidebar"] * { color: #e5e5e5 !important; }
 
-/* CRITICAL: Hide orphaned "key" text from Material Icons */
+/* Hide orphaned text */
 section[data-testid="stSidebar"] > div > div:first-child > div:first-child { display: none !important; }
 
-/* Text colors */
 h1, h2, h3, h4, h5, h6 { color: #ffffff !important; }
 p, span, label, div, li { color: #e5e5e5; }
 
-/* Form inputs */
 .stTextInput > div > div > input,
 .stTextArea > div > div > textarea,
 .stSelectbox > div > div,
 .stMultiSelect > div > div,
 [data-baseweb="select"] > div { background: #12121a !important; border: 1px solid rgba(99,102,241,0.3) !important; color: #ffffff !important; border-radius: 8px !important; }
 
-/* Multiselect tags */
 [data-baseweb="tag"] { background: rgba(99,102,241,0.3) !important; color: white !important; }
 
-/* Buttons */
 .stButton > button { background: linear-gradient(135deg, #6366f1, #8b5cf6) !important; color: white !important; border: none !important; border-radius: 8px !important; font-weight: 600 !important; }
-.stButton > button:hover { opacity: 0.9; }
 .stDownloadButton > button { background: #1a1a2e !important; border: 1px solid rgba(99,102,241,0.3) !important; color: white !important; }
 
-/* Tabs */
 .stTabs [data-baseweb="tab-list"] { background: transparent !important; gap: 8px; border-bottom: 1px solid rgba(99,102,241,0.2); }
 .stTabs [data-baseweb="tab"] { background: transparent !important; color: #9ca3af !important; border: none !important; border-bottom: 2px solid transparent; padding: 12px 20px !important; }
 .stTabs [aria-selected="true"] { background: transparent !important; color: #fff !important; border-bottom: 2px solid #6366f1 !important; }
 
-/* Radio */
 .stRadio > div { flex-direction: row !important; gap: 12px; flex-wrap: wrap; }
 .stRadio > div > label { background: #12121a !important; padding: 10px 16px !important; border-radius: 8px !important; border: 1px solid rgba(99,102,241,0.2) !important; }
 
-/* Checkbox */
 .stCheckbox > label { color: #e5e5e5 !important; }
 
-/* File uploader */
 [data-testid="stFileUploader"] { background: #12121a !important; border: 1px dashed rgba(99,102,241,0.3) !important; border-radius: 8px !important; padding: 20px !important; }
 
-/* Selectbox/Multiselect dropdown */
 [data-baseweb="popover"], [data-baseweb="menu"] { background: #12121a !important; }
 [role="option"] { color: #e5e5e5 !important; }
 [role="option"]:hover { background: rgba(99,102,241,0.2) !important; }
 
-/* Slider */
 .stSlider > div > div { background: rgba(99,102,241,0.3) !important; }
 
-/* Metrics */
 [data-testid="stMetricValue"] { color: #fff !important; }
 [data-testid="stMetricLabel"] { color: #9ca3af !important; }
 
-/* Success/Error */
 .stSuccess { background: rgba(16,185,129,0.1) !important; border: 1px solid #10b981 !important; }
 .stError { background: rgba(239,68,68,0.1) !important; border: 1px solid #ef4444 !important; }
 .stWarning { background: rgba(245,158,11,0.1) !important; border: 1px solid #f59e0b !important; }
 .stInfo { background: rgba(99,102,241,0.1) !important; border: 1px solid #6366f1 !important; }
 
-/* Custom */
 .user-card { background: rgba(99,102,241,0.1); border-radius: 12px; padding: 16px; margin-bottom: 20px; }
 .metric-card { background: linear-gradient(135deg, rgba(99,102,241,0.1), rgba(139,92,246,0.1)); border: 1px solid rgba(99,102,241,0.2); border-radius: 12px; padding: 20px; text-align: center; }
 .output-box { background: #12121a; border: 1px solid rgba(99,102,241,0.2); border-radius: 12px; padding: 20px; margin: 16px 0; white-space: pre-wrap; color: #e5e5e5; }
 .status-badge { position: fixed; top: 70px; right: 20px; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; padding: 10px 20px; border-radius: 25px; font-weight: 600; z-index: 999; animation: pulse 2s infinite; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
-.active-app { background: rgba(99,102,241,0.3) !important; border: 1px solid #6366f1 !important; }
 </style>""", unsafe_allow_html=True)
 
 # Auth
@@ -444,8 +902,8 @@ if not st.session_state.authenticated:
     with c2:
         st.markdown("""<div style="text-align:center;padding:60px 0 30px;">
             <img src="https://sharphuman.com/logo1-3.png" style="width:80px;margin-bottom:20px;">
-            <h1 style="margin:0;">Sharp JD</h1>
-            <p style="color:#9ca3af;">AI Job Description Writer</p>
+            <h1 style="margin:0;">Sharp Screen</h1>
+            <p style="color:#9ca3af;">AI CV Screening & Analysis</p>
         </div>""", unsafe_allow_html=True)
         
         t1, t2 = st.tabs(["Log In", "Sign Up"])
@@ -484,14 +942,14 @@ if not st.session_state.authenticated:
 # AUTHENTICATED UI
 # ============================================
 
-# Working status
 if st.session_state.working_on:
     st.markdown(f'<div class="status-badge">{st.session_state.working_on}</div>', unsafe_allow_html=True)
 
+# Sidebar with ICONS
 # Sidebar - Use shared UI if available
 if USING_SHARED:
     render_sidebar(
-        current_app="jd",
+        current_app="screen",
         user_email=get_user_email(),
         user_plan=st.session_state.get('user_plan', 'free'),
         session_token=st.session_state.get('session_token', '')
@@ -511,7 +969,7 @@ else:
             ("sales", "💰 Sales"),
         ]
         for key, label in apps:
-            if key == "jd":
+            if key == "screen":
                 st.markdown(f"<div style='background:linear-gradient(135deg,#6366f1,#8b5cf6);padding:10px 16px;border-radius:8px;text-align:center;margin:4px 0;color:white;font-weight:600;'>{label} ◀</div>", unsafe_allow_html=True)
             else:
                 st.link_button(label, build_app_url(key), use_container_width=True)
@@ -523,400 +981,342 @@ else:
             for k in list(st.session_state.keys()): del st.session_state[k]
             st.rerun()
 
-# Floating feedback at bottom of page (not sidebar)
-# Will be added at end of main content
-
 # Header
 st.markdown("""<div style="display:flex;align-items:center;gap:16px;padding:20px 0;border-bottom:1px solid rgba(99,102,241,0.2);margin-bottom:30px;">
     <img src="https://sharphuman.com/logo1-3.png" style="width:50px;">
-    <div><h1 style="margin:0;font-size:28px;">Sharp JD</h1><p style="color:#9ca3af;margin:0;">AI-Powered Job Descriptions</p></div>
+    <div><h1 style="margin:0;font-size:28px;">Sharp Screen</h1><p style="color:#9ca3af;margin:0;">AI-Powered CV Screening</p></div>
 </div>""", unsafe_allow_html=True)
 
-# Check for copy_to_create flag
-if st.session_state.get('copy_to_create') and st.session_state.get('enhanced_jd'):
-    st.session_state.requirements_text = st.session_state.enhanced_jd
-    st.session_state.copy_to_create = False
-    st.info("✅ Enhanced JD copied to Requirements! Switch to Create JD tab.")
-
 # Tabs
-tab_create, tab_import, tab_history = st.tabs(["✏️ Create JD", "📄 Import/Enhance", "📜 History"])
+tab_screen, tab_blind, tab_salary = st.tabs(["🔍 Screen & Rank", "👤 Blind Resume", "💰 Salary Estimator"])
 
-with tab_create:
-    st.markdown("### 📋 Job Details")
+with tab_screen:
+    # Input section
+    st.markdown("### 📋 Job Description")
+    jd_src = st.radio("Source:", ["📝 Paste", "📜 History", "📄 Upload"], horizontal=True, key="jd_src")
     
-    c1, c2 = st.columns(2)
-    with c1:
-        job_title = st.text_input("Job Title *", placeholder="e.g. Senior Software Engineer")
-        company = st.text_input("Company", placeholder="e.g. Acme Corp")
-        experience_level = st.selectbox("Level", ["Entry Level", "Mid Level", "Senior", "Lead", "Manager", "Director", "Executive"])
+    jd_text = ""
+    jd_id = None
     
-    with c2:
-        industry = st.selectbox("Industry", ["Technology", "Healthcare", "Finance", "Retail", "Manufacturing", "Education", "Media", "Consulting", "Government", "Non-Profit", "Other"])
-        remote_type = st.selectbox("Work Type", ["Remote", "Hybrid", "On-site"])
-        tone = st.selectbox("Tone", ["Professional", "Casual/Startup", "Formal/Corporate", "Friendly", "Bold/Exciting"])
-    
-    # User type - Recruiter or Internal HR
-    user_type = st.radio("I am a:", ["🏢 Recruiter (Agency)", "👔 Internal HR / TA"], horizontal=True)
-    
-    st.markdown("### 📝 Requirements")
-    
-    # Option to load from file OR paste
-    req_source = st.radio("Source:", ["📝 Type/Paste", "📄 Upload File"], horizontal=True, key="req_src")
-    
-    if req_source == "📄 Upload File":
-        req_file = st.file_uploader("Upload requirements (PDF, DOCX, TXT)", type=['pdf', 'docx', 'txt', 'json'], key="req_upload")
-        if req_file:
-            st.session_state.requirements_text = extract_text_from_file(req_file)
-            st.success(f"✅ Loaded from {req_file.name}")
-    
-    # Text area with pre-filled content if available
-    requirements = st.text_area(
-        "Key requirements & responsibilities",
-        value=st.session_state.get('requirements_text', ''),
-        height=150,
-        placeholder="• 5+ years experience\n• Python, AWS\n• Leadership skills...\n\nOr paste an existing JD to build from..."
-    )
-    
-    # Update session state
-    st.session_state.requirements_text = requirements
-    
-    # Options row
-    c1, c2, c3, c4 = st.columns(4)
-    with c1: inc_salary = st.checkbox("💰 Salary", value=True)
-    with c2: inc_benefits = st.checkbox("🎁 Benefits", value=True)
-    with c3: inc_diversity = st.checkbox("🌈 Diversity", value=True)
-    with c4: word_target = st.select_slider("Words", [300, 400, 500, 600, 700, 800], value=500)
-    
-    if st.button("📝 Generate Job Description", type="primary", use_container_width=True):
-        if not job_title:
-            st.warning("Enter a job title")
+    if jd_src == "📜 History":
+        history = get_jd_history(20)
+        if history:
+            opts = {f"{j['job_title']} ({j['created_at'][:10]})": j for j in history}
+            sel = st.selectbox("Select:", list(opts.keys()))
+            if sel:
+                jd_text = opts[sel].get('generated_jd', '')
+                jd_id = opts[sel].get('id')
+                st.success(f"✅ Loaded: {opts[sel].get('job_title')}")
         else:
-            st.session_state.working_on = "Writing JD..."
-            
-            user_context = "an external recruiter at a staffing agency" if "Recruiter" in user_type else "an internal HR/TA professional"
-            
-            prompt = f"""Write a compelling job description:
-
-**Context:** I am {user_context} writing this JD.
-
-**Job:** {job_title}
-**Company:** {company or "A growing company"}
-**Level:** {experience_level}
-**Industry:** {industry}
-**Work Type:** {remote_type}
-**Tone:** {tone}
-
-**Requirements/Base Content:** 
-{requirements or "Standard for this role"}
-
-**Include:**
-- About Company (2-3 sentences)
-- About Role
-- Responsibilities (5-7 bullets)
-- Requirements (must-have and nice-to-have separated)
-{"- Salary range placeholder" if inc_salary else ""}
-{"- Benefits section" if inc_benefits else ""}
-{"- Diversity/EEO statement" if inc_diversity else ""}
-- How to Apply
-
-Target: ~{word_target} words. Make it compelling and clear."""
-
-            with st.spinner("Writing..."):
-                result, tokens = call_claude(prompt)
+            st.info("No saved JDs")
+            jd_text = st.text_area("Paste JD:", height=120)
+    elif jd_src == "📄 Upload":
+        f = st.file_uploader("Upload JD", type=['pdf', 'docx', 'txt'])
+        if f:
+            jd_text = extract_text_from_file(f)
+            st.success(f"✅ Loaded {f.name}")
+    else:
+        jd_text = st.text_area("Paste Job Description:", height=150, 
+            placeholder="Paste the full job description here including:\n• Required qualifications & skills\n• Responsibilities\n• Experience level\n• Salary range (if available)")
+    
+    st.markdown("---")
+    
+    st.markdown("### 📄 Candidate CVs")
+    cv_src = st.radio("Source:", ["📝 Paste", "📁 Upload", "🔗 JSON/ATS"], horizontal=True, key="cv_src")
+    
+    cvs_text = ""
+    if cv_src == "📁 Upload":
+        files = st.file_uploader("Upload CVs", type=['pdf', 'docx', 'txt'], accept_multiple_files=True)
+        if files:
+            st.success(f"📎 {len(files)} files uploaded")
+            cvs_text = "\n\n---\n\n".join([f"=== {f.name} ===\n{extract_text_from_file(f)}" for f in files])
+    elif cv_src == "🔗 JSON/ATS":
+        json_in = st.text_area("Paste JSON:", height=120)
+        if json_in:
+            cands = parse_json_candidates(json_in)
+            if cands:
+                st.success(f"✅ {len(cands)} candidates parsed")
+                cvs_text = "\n\n---\n\n".join([json.dumps(c, indent=2) for c in cands])
+    else:
+        cvs_text = st.text_area("Paste CVs (separate with ---):", height=180, 
+            placeholder="Paste candidate resumes here, separated by ---\n\nExample:\nJohn Smith - Software Engineer\n5 years Python, AWS...\n\n---\n\nJane Doe - Backend Developer\n3 years Node.js, PostgreSQL...")
+    
+    st.markdown("---")
+    
+    st.markdown("### ⚙️ Options")
+    c1, c2, c3, c4 = st.columns(4)
+    with c1: bias_free = st.checkbox("🔒 Bias-Free", value=True)
+    with c2: ai_detect = st.checkbox("🤖 AI Detection", value=True)
+    with c3: salary_est = st.checkbox("💰 Salary Est.", value=True)
+    with c4: save_hist = st.checkbox("💾 Save Results", value=True)
+    
+    if st.button("🔍 Screen Candidates", type="primary", use_container_width=True):
+        if not jd_text: st.warning("Provide JD")
+        elif not cvs_text: st.warning("Provide CVs")
+        else:
+            st.session_state.working_on = "Analyzing candidates..."
+            with st.spinner("Screening..."):
+                result, tokens = screen_candidates(jd_text, cvs_text, {'bias_free': bias_free, 'ai_detection': ai_detect, 'salary_estimate': salary_est})
                 st.session_state.working_on = None
-                
                 if not result.startswith("Error"):
-                    st.session_state.generated_jd = result
-                    st.session_state.jd_metadata = {
-                        "job_title": job_title, "company": company, "experience_level": experience_level,
-                        "remote_type": remote_type, "industry": industry, "tone": tone,
-                        "user_type": user_type, "tokens_used": tokens
-                    }
+                    st.session_state.screening_results = result
+                    st.session_state.selected_candidates = []
+                    st.session_state.hm_summary = None
+                    if save_hist:
+                        save_screen_history(jd_id, jd_text, cvs_text, result, cvs_text.count('---')+1, tokens)
                     st.rerun()
                 else:
                     st.error(result)
-
-    # Display generated JD
-    if st.session_state.generated_jd:
+    
+    # Results
+    if st.session_state.screening_results:
         st.markdown("---")
-        st.markdown("### 📄 Your Job Description")
         
-        meta = st.session_state.jd_metadata or {}
-        seo = calculate_seo_score(st.session_state.generated_jd, meta)
-        words = len(st.session_state.generated_jd.split())
-        
-        # Stats
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            color = "#10b981" if seo >= 70 else "#f59e0b" if seo >= 50 else "#ef4444"
-            st.markdown(f'<div class="metric-card"><p style="color:#9ca3af;margin:0;font-size:12px;">SEO Score</p><p style="color:{color};font-size:28px;font-weight:bold;margin:0;">{seo}/100</p></div>', unsafe_allow_html=True)
-        with c2:
-            st.markdown(f'<div class="metric-card"><p style="color:#9ca3af;margin:0;font-size:12px;">Words</p><p style="color:#fff;font-size:28px;font-weight:bold;margin:0;">{words}</p></div>', unsafe_allow_html=True)
-        with c3:
-            st.markdown(f'<div class="metric-card"><p style="color:#9ca3af;margin:0;font-size:12px;">Characters</p><p style="color:#fff;font-size:28px;font-weight:bold;margin:0;">{len(st.session_state.generated_jd):,}</p></div>', unsafe_allow_html=True)
-        
-        st.markdown("")
-        st.markdown(f'<div class="output-box">{st.session_state.generated_jd}</div>', unsafe_allow_html=True)
-        
-        # Export
-        st.markdown("### 📥 Export")
-        exp_c1, exp_c2 = st.columns(2)
-        with exp_c1:
-            export_platform = st.selectbox("Platform:", ["General", "LinkedIn", "Indeed", "Company Careers", "Glassdoor"])
-        with exp_c2:
-            export_format = st.selectbox("Format:", ["Plain Text (.txt)", "HTML/PDF (.html)", "Word (.docx)", "Markdown (.md)", "ATS JSON (.json)"])
-        
-        file_title = meta.get('job_title', 'job_description').lower().replace(' ', '_')
-        
-        if "Plain Text" in export_format:
-            st.download_button("📥 Download", st.session_state.generated_jd, f"{file_title}.txt", "text/plain", use_container_width=True)
-        elif "HTML" in export_format:
-            st.download_button("📥 Download", generate_html(st.session_state.generated_jd, meta, export_platform), f"{file_title}.html", "text/html", use_container_width=True)
-        elif "Word" in export_format:
-            docx = generate_docx_bytes(st.session_state.generated_jd, meta)
-            if docx:
-                st.download_button("📥 Download", docx, f"{file_title}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
-            else:
-                st.warning("DOCX requires python-docx")
-        elif "Markdown" in export_format:
-            st.download_button("📥 Download", st.session_state.generated_jd, f"{file_title}.md", "text/markdown", use_container_width=True)
-        elif "JSON" in export_format:
-            st.download_button("📥 Download", generate_ats_json(st.session_state.generated_jd, meta), f"{file_title}.json", "application/json", use_container_width=True)
-        
-        # Actions
-        st.markdown("### 💾 Actions")
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            if st.button("💾 Save to History", use_container_width=True):
-                st.session_state.working_on = "Saving..."
-                saved, err = save_jd_to_history(meta, st.session_state.generated_jd, seo, meta.get('tokens_used', 0))
-                st.session_state.working_on = None
-                if saved:
-                    st.success("✅ Saved!")
-                else:
-                    st.error(f"Save failed: {err}")
-        with c2:
-            st.link_button("📤 Open in Screener", build_app_url("screen"), use_container_width=True)
-        with c3:
-            if st.button("🔄 Start New", use_container_width=True):
-                st.session_state.generated_jd = None
-                st.session_state.jd_metadata = None
-                st.session_state.requirements_text = ''
-                st.rerun()
-        
-        # Refine
-        st.markdown("---")
-        st.markdown("### ✏️ Refine")
-        refine = st.text_input("What to change?", placeholder="Make shorter, add Python, more casual...")
-        if st.button("✨ Apply Changes", use_container_width=True):
-            if refine:
-                st.session_state.working_on = "Refining..."
-                with st.spinner("Refining..."):
-                    result, _ = call_claude(f"Modify this JD:\n\n{st.session_state.generated_jd}\n\nChanges: {refine}\n\nOutput only the modified JD.")
-                    st.session_state.working_on = None
-                    if not result.startswith("Error"):
-                        st.session_state.generated_jd = result
-                        st.rerun()
-                    else:
-                        st.error(result)
-
-with tab_import:
-    st.markdown("### 📄 Import & Enhance")
-    st.markdown("Upload or paste an existing JD to enhance, optimize, or reformat.")
-    
-    src = st.radio("Source:", ["📄 Upload", "📝 Paste", "🔗 JSON/ATS"], horizontal=True, key="imp_src")
-    
-    imported = ""
-    if src == "📄 Upload":
-        f = st.file_uploader("Upload JD (PDF, DOCX, TXT, JSON)", type=['pdf', 'docx', 'txt', 'json'], key="imp_file")
-        if f:
-            imported = extract_text_from_file(f)
-            st.success(f"✅ Loaded {f.name}")
-            if st.checkbox("Preview", key="imp_preview"):
-                st.text_area("Content:", imported[:2000], height=150, disabled=True)
-    elif src == "🔗 JSON/ATS":
-        imported = st.text_area("Paste ATS JSON:", height=150, placeholder='{"title": "...", "description": "..."}')
-        if imported:
-            try:
-                data = json.loads(imported)
-                st.success("✅ Valid JSON")
-                # Extract description
-                for key in ['description', 'job_description', 'content']:
-                    if key in data:
-                        imported = data[key]
-                        break
-            except:
-                pass
-    else:
-        imported = st.text_area("Paste existing JD:", height=200, placeholder="Paste job description here...")
-    
-    if imported:
-        st.markdown("---")
-        st.markdown("### 🎯 Enhancement Options")
-        
-        # Multi-select for actions
-        actions = st.multiselect(
-            "Select enhancements (multiple allowed):",
-            ["Rewrite & Improve", "Optimize for ATS/SEO", "Make Concise", "Expand Detail", "Change Tone", "Add Missing Sections"],
-            default=["Rewrite & Improve"]
-        )
-        
-        if "Change Tone" in actions:
-            new_tone = st.selectbox("New tone:", ["Professional", "Casual/Startup", "Formal", "Friendly", "Bold"])
-        else:
-            new_tone = "Professional"
-        
-        c1, c2 = st.columns(2)
-        with c1:
-            if st.button("✨ Enhance JD", type="primary", use_container_width=True):
-                if actions:
-                    st.session_state.working_on = "Enhancing..."
-                    
-                    action_text = ", ".join(actions)
-                    prompt = f"""Enhance this job description with the following actions: {action_text}
-
-{"Change the tone to: " + new_tone if "Change Tone" in actions else ""}
-
-## ORIGINAL JD:
-{imported}
-
-## INSTRUCTIONS:
-- Apply ALL selected enhancements
-- Keep the core job requirements intact
-- Output a polished, ready-to-use job description
-- If "Add Missing Sections" is selected, add: About Company, About Role, Responsibilities, Requirements, Benefits, How to Apply
-
-Output only the enhanced job description."""
-
-                    with st.spinner("Enhancing..."):
-                        result, _ = call_claude(prompt)
-                        st.session_state.working_on = None
-                        if not result.startswith("Error"):
-                            st.session_state.enhanced_jd = result
-                            st.rerun()
-                        else:
-                            st.error(result)
-                else:
-                    st.warning("Select at least one enhancement")
-        
-        with c2:
-            if st.button("📋 Copy to Create Tab", use_container_width=True):
-                st.session_state.requirements_text = imported
-                st.success("✅ Copied! Switch to Create JD tab.")
-    
-    # Show enhanced result
-    if st.session_state.get('enhanced_jd'):
-        st.markdown("---")
-        st.markdown("### ✅ Enhanced JD")
-        st.markdown(f'<div class="output-box">{st.session_state.enhanced_jd}</div>', unsafe_allow_html=True)
-        
-        # Actions for enhanced JD
-        c1, c2, c3, c4 = st.columns(4)
-        with c1:
-            st.download_button("📥 Download", st.session_state.enhanced_jd, "enhanced_jd.txt", "text/plain", use_container_width=True)
-        with c2:
-            if st.button("📋 → Create Tab", use_container_width=True, key="copy_enhanced"):
-                st.session_state.requirements_text = st.session_state.enhanced_jd
-                st.session_state.copy_to_create = True
-                st.rerun()
-        with c3:
-            if st.button("💾 Save to History", use_container_width=True, key="save_enhanced"):
-                st.session_state.working_on = "Saving..."
-                saved, err = save_jd_to_history({"job_title": "Enhanced JD"}, st.session_state.enhanced_jd, 70, 0)
-                st.session_state.working_on = None
-                if saved:
-                    st.success("✅ Saved!")
-                else:
-                    st.error(f"Failed: {err}")
-        with c4:
-            if st.button("🔄 Clear", use_container_width=True):
-                st.session_state.enhanced_jd = None
-                st.rerun()
-
-with tab_history:
-    st.markdown("### 📜 Your JD History")
-    
-    if st.session_state.user.get("id") == "god":
-        st.info("History not available in GOD mode. Log in with a regular account.")
-    else:
-        history = get_jd_history(50)
-        
-        if not history:
-            st.markdown('<p style="text-align:center;color:#6b7280;padding:40px;">No saved JDs yet. Create and save a JD to see it here!</p>', unsafe_allow_html=True)
-        else:
-            # Search and filter
-            c1, c2 = st.columns([3, 1])
-            with c1:
-                search = st.text_input("🔍 Search", placeholder="Filter by job title...", label_visibility="collapsed")
-            with c2:
-                show_favs = st.checkbox("⭐ Favorites")
+        try:
+            match = re.search(r'```json\s*(.*?)\s*```', st.session_state.screening_results, re.DOTALL)
+            data = json.loads(match.group(1) if match else st.session_state.screening_results)
+            st.session_state.parsed_data = data
+            
+            summary = data.get('screening_summary', {})
+            candidates = data.get('candidates', [])
+            insights = data.get('batch_insights', {})
+            
+            # Summary metrics
+            st.markdown("### 📊 Results Summary")
+            cols = st.columns(5)
+            metrics = [
+                ("Total", summary.get('total_candidates', '?'), "#fff"),
+                ("Recommended", summary.get('recommended_for_interview', '?'), "#10b981"),
+                ("Maybe", summary.get('maybe', '?'), "#f59e0b"),
+                ("Time Saved", f"~{summary.get('time_saved_minutes', '?')}m", "#6366f1"),
+                ("Bias Score", f"{summary.get('bias_mitigation_score', '?')}/100", "#8b5cf6")
+            ]
+            for col, (label, val, color) in zip(cols, metrics):
+                with col:
+                    st.markdown(f'<div class="metric-card"><p style="color:#9ca3af;margin:0;font-size:11px;">{label}</p><p style="color:{color};font-size:24px;font-weight:bold;margin:0;">{val}</p></div>', unsafe_allow_html=True)
+            
+            # Filters
+            st.markdown("### 🔍 Filter & Sort")
+            f1, f2, f3, f4 = st.columns(4)
+            with f1: min_score = st.slider("Min Score", 0, 100, 0)
+            with f2: salary_filter = st.selectbox("Salary", ["All", "Within Range", "Above", "Below"])
+            with f3: sort_by = st.selectbox("Sort", ["Rank", "Score", "Experience"])
+            with f4: compare_mode = st.checkbox("Compare Mode")
             
             # Filter
-            filtered = history
-            if search:
-                filtered = [h for h in filtered if search.lower() in (h.get("job_title") or "").lower()]
-            if show_favs:
-                filtered = [h for h in filtered if h.get("is_favorite")]
+            filtered = [c for c in candidates if c.get('match_score', 0) >= min_score]
+            if salary_filter != "All":
+                filtered = [c for c in filtered if salary_filter.lower() in c.get('salary_alignment', '').lower()]
             
-            if not filtered:
-                st.info("No matching JDs found.")
+            if sort_by == "Score": filtered = sorted(filtered, key=lambda x: x.get('match_score', 0), reverse=True)
+            elif sort_by == "Experience": filtered = sorted(filtered, key=lambda x: x.get('experience_years', 0), reverse=True)
+            
+            # Compare
+            if compare_mode and len(st.session_state.selected_candidates) >= 2:
+                if st.button(f"📊 Compare {len(st.session_state.selected_candidates)} Selected"):
+                    st.session_state.working_on = "Comparing..."
+                    selected_data = [c for c in candidates if c.get('identifier') in st.session_state.selected_candidates]
+                    result, _ = compare_candidates(selected_data)
+                    st.session_state.working_on = None
+                    st.session_state.comparison_result = result
+            
+            # Candidates
+            st.markdown(f"### 👥 Candidates ({len(filtered)})")
+            
+            for c in filtered:
+                identifier = c.get('identifier', 'Unknown')
+                
+                if compare_mode:
+                    is_sel = identifier in st.session_state.selected_candidates
+                    if st.checkbox(f"Select {identifier}", value=is_sel, key=f"sel_{identifier}"):
+                        if identifier not in st.session_state.selected_candidates:
+                            st.session_state.selected_candidates.append(identifier)
+                    else:
+                        if identifier in st.session_state.selected_candidates:
+                            st.session_state.selected_candidates.remove(identifier)
+                
+                # Rich display
+                display_candidate_rich(c)
+                
+                # Action buttons
+                score = c.get('match_score', 0)
+                col_st, col_act = st.columns([1, 3])
+                with col_st:
+                    current_status = st.session_state.candidate_statuses.get(identifier, "Reviewing")
+                    new_status = st.selectbox("Status", ["Reviewing", "Contacted", "Phone Screen", "Assessment", "Rejected", "Hired"], 
+                        index=["Reviewing", "Contacted", "Phone Screen", "Assessment", "Rejected", "Hired"].index(current_status), key=f"st_{identifier}")
+                    if new_status != current_status:
+                        st.session_state.candidate_statuses[identifier] = new_status
+                
+                with col_act:
+                    bc1, bc2, bc3, bc4 = st.columns(4)
+                    if score >= 70:
+                        with bc1:
+                            if st.button("📧 Phone Screen", key=f"ps_{identifier}"):
+                                st.session_state.working_on = "Drafting..."
+                                email, _ = generate_email_template(c, "phone_screen", jd_text[:100])
+                                st.session_state.working_on = None
+                                st.session_state[f"email_{identifier}"] = email
+                    if 50 <= score < 70:
+                        with bc2:
+                            if st.button("📝 Skills Test", key=f"sk_{identifier}"):
+                                st.session_state.working_on = "Drafting..."
+                                email, _ = generate_email_template(c, "skills_test", jd_text[:100])
+                                st.session_state.working_on = None
+                                st.session_state[f"email_{identifier}"] = email
+                    if score < 50:
+                        with bc3:
+                            if st.button("❌ Rejection", key=f"rej_{identifier}"):
+                                st.session_state.working_on = "Drafting..."
+                                email, _ = generate_email_template(c, "rejection", jd_text[:100])
+                                st.session_state.working_on = None
+                                st.session_state[f"email_{identifier}"] = email
+                    with bc4:
+                        if st.button("💼 LinkedIn", key=f"li_{identifier}"):
+                            st.session_state.working_on = "Drafting..."
+                            msg, _ = generate_email_template(c, "linkedin", jd_text[:100])
+                            st.session_state.working_on = None
+                            st.session_state[f"email_{identifier}"] = msg
+                
+                if st.session_state.get(f"email_{identifier}"):
+                    st.text_area("Generated:", st.session_state[f"email_{identifier}"], height=120, key=f"em_{identifier}")
+                    if st.button("Clear", key=f"cl_{identifier}"):
+                        del st.session_state[f"email_{identifier}"]
+                        st.rerun()
+                
+                st.markdown("---")
+            
+            # Batch Actions
+            st.markdown("### 📋 Batch Actions")
+            if st.button("📊 Generate Hiring Manager Summary", use_container_width=True):
+                st.session_state.working_on = "Generating summary..."
+                result, _ = generate_hiring_manager_summary(candidates, bias_free)
+                st.session_state.working_on = None
+                st.session_state.hm_summary = result
+                st.rerun()
+            
+            # HM Summary with rich display
+            if st.session_state.get('hm_summary'):
+                st.markdown("### 👔 Hiring Manager Summary")
+                display_hm_summary_rich(st.session_state.hm_summary)
+            
+            # Export
+            st.markdown("### 📥 Export Reports")
+            e1, e2, e3, e4 = st.columns(4)
+            
+            with e1:
+                pdf_bytes = generate_pdf_bytes(data, jd_text[:50] if jd_text else "Report")
+                if pdf_bytes:
+                    st.download_button("📄 PDF Report", pdf_bytes, "screening_report.pdf", "application/pdf", use_container_width=True)
+                else:
+                    st.warning("PDF requires reportlab")
+            with e2:
+                st.download_button("📊 CSV", generate_csv_report(data), "report.csv", "text/csv", use_container_width=True)
+            with e3:
+                st.download_button("🔗 JSON", json.dumps(data, indent=2), "data.json", "application/json", use_container_width=True)
+            with e4:
+                if st.button("🔄 New Screening", use_container_width=True):
+                    st.session_state.screening_results = None
+                    st.session_state.selected_candidates = []
+                    st.session_state.comparison_result = None
+                    st.session_state.hm_summary = None
+                    st.rerun()
+            
+            # Insights
+            if insights:
+                st.markdown("### 💡 Batch Insights")
+                st.info(f"**🏆 Top Candidate:** {insights.get('strongest_candidate_summary', '')}")
+                st.warning(f"**📋 Common Gaps:** {', '.join(insights.get('common_gaps', []))}")
+                st.success(f"**✅ Recommendation:** {insights.get('hiring_recommendation', '')}")
+        
+        except Exception as e:
+            st.error(f"Error parsing results: {e}")
+            st.markdown(f'<div class="output-box">{st.session_state.screening_results}</div>', unsafe_allow_html=True)
+
+with tab_blind:
+    st.markdown("### 👤 Blind Resume Anonymization")
+    c1, c2 = st.columns([2, 1])
+    with c1:
+        src = st.radio("Source:", ["📝 Paste", "📄 Upload"], horizontal=True, key="anon_src")
+        if src == "📄 Upload":
+            f = st.file_uploader("Upload CV", type=['pdf', 'docx', 'txt'], key="anon_file")
+            resume = extract_text_from_file(f) if f else ""
+        else:
+            resume = st.text_area("Paste resume:", height=250)
+    with c2:
+        time_based = st.checkbox("⏱️ Time-based dates")
+        st.caption("Removes: names, emails, phones, addresses, universities, companies")
+    
+    if st.button("👤 Anonymize", type="primary", use_container_width=True):
+        if resume:
+            st.session_state.working_on = "Anonymizing..."
+            result, _ = anonymize_cv(resume, {'time_based': time_based})
+            st.session_state.working_on = None
+            if not result.startswith("Error"):
+                st.session_state.anonymized_result = result
+                st.rerun()
             else:
-                for item in filtered:
-                    is_fav = item.get("is_favorite", False)
-                    title = item.get('job_title', 'Untitled')
-                    company = item.get('company', '')
-                    date = item.get('created_at', '')[:10] if item.get('created_at') else ''
-                    score = item.get('seo_ats_score', '?')
-                    level = item.get('experience_level', '')
-                    remote = item.get('remote_type', '')
-                    
-                    st.markdown(f"""<div style="background:#12121a;border:1px solid rgba(99,102,241,0.2);border-radius:12px;padding:16px;margin:8px 0;">
-                        <div style="display:flex;justify-content:space-between;align-items:center;">
-                            <div>
-                                <strong style="font-size:16px;">{'⭐ ' if is_fav else ''}{title}</strong>
-                                {f'<span style="color:#9ca3af;margin-left:8px;">@ {company}</span>' if company else ''}
-                            </div>
-                            <span style="color:#6366f1;font-size:14px;">{date}</span>
-                        </div>
-                        <p style="color:#9ca3af;margin:8px 0;font-size:13px;">Score: {score}/100 | {level} | {remote}</p>
-                    </div>""", unsafe_allow_html=True)
-                    
-                    # Actions
-                    c1, c2, c3, c4, c5 = st.columns(5)
-                    with c1:
-                        if st.button("📋 Load", key=f"load_{item['id']}", use_container_width=True):
-                            st.session_state.generated_jd = item.get("generated_jd")
-                            st.session_state.jd_metadata = item
-                            st.rerun()
-                    with c2:
-                        if st.button("📝 → Create", key=f"tocreate_{item['id']}", use_container_width=True):
-                            st.session_state.requirements_text = item.get("generated_jd", "")
-                            st.info("Copied to Requirements! Switch to Create tab.")
-                    with c3:
-                        fav_label = "★" if is_fav else "☆"
-                        if st.button(fav_label, key=f"fav_{item['id']}", use_container_width=True):
-                            toggle_favorite(item['id'], not is_fav)
-                            st.rerun()
-                    with c4:
-                        st.download_button("📥", item.get("generated_jd", ""), f"jd_{item['id'][:8]}.txt", key=f"dl_{item['id']}", use_container_width=True)
-                    with c5:
-                        if st.button("🗑️", key=f"del_{item['id']}", use_container_width=True):
-                            delete_jd_history(item['id'])
-                            st.rerun()
-                    
-                    st.markdown("---")
+                st.error(result)
+    
+    if st.session_state.get('anonymized_result'):
+        try:
+            match = re.search(r'```json\s*(.*?)\s*```', st.session_state.anonymized_result, re.DOTALL)
+            data = json.loads(match.group(1) if match else st.session_state.anonymized_result)
+            st.metric("Confidence", f"{data.get('anonymization_score', 0)}%")
+            st.markdown(f'<div class="output-box">{data.get("anonymized_cv", "")}</div>', unsafe_allow_html=True)
+            st.download_button("📥 Download", data.get("anonymized_cv", ""), "anonymized.txt", use_container_width=True)
+        except:
+            st.markdown(f'<div class="output-box">{st.session_state.anonymized_result}</div>', unsafe_allow_html=True)
+
+with tab_salary:
+    st.markdown("### 💰 Salary Estimator")
+    c1, c2 = st.columns(2)
+    with c1: sal_jd = st.text_area("Job Description:", height=150, key="sal_jd")
+    with c2: sal_cv = st.text_area("Candidate CV:", height=150, key="sal_cv")
+    location = st.selectbox("Market:", ["US - National", "US - SF Bay Area", "US - NYC", "US - Remote", "UK - London", "EU", "Canada"])
+    
+    if st.button("💰 Estimate Salary", type="primary", use_container_width=True):
+        if sal_jd and sal_cv:
+            st.session_state.working_on = "Estimating..."
+            result, _ = estimate_salary(sal_cv, sal_jd, location)
+            st.session_state.working_on = None
+            if not result.startswith("Error"):
+                st.markdown(f'<div class="output-box">{result}</div>', unsafe_allow_html=True)
+            else:
+                st.error(result)
 
 # ============================================
-# FLOATING FEEDBACK (Bottom of page)
+# FLOATING FEEDBACK (Clean popover)
 # ============================================
-st.markdown("---")
-with st.container():
-    fb_col1, fb_col2, fb_col3 = st.columns([2, 1, 1])
-    with fb_col3:
-        if st.checkbox("💬 Send Feedback", key="show_fb"):
-            fb_type = st.selectbox("Type", ["Bug", "Feature", "General"], key="fb_type")
-            fb_msg = st.text_area("Message", height=100, key="fb_msg", placeholder="Your feedback...")
-            if st.button("Submit Feedback", key="fb_submit"):
-                if fb_msg:
-                    submit_feedback("jd", fb_type.lower(), fb_msg)
+st.markdown('<div style="height:60px;"></div>', unsafe_allow_html=True)
+
+st.markdown("""
+<style>
+div[data-testid="stPopover"] button {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 25px !important;
+    padding: 10px 20px !important;
+    font-weight: 600 !important;
+    box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+}
+</style>
+""", unsafe_allow_html=True)
+
+_, _, _, fb_col = st.columns([4, 1, 1, 1])
+with fb_col:
+    with st.popover("💬 Feedback"):
+        st.markdown("**Send Feedback**")
+        fb_type = st.segmented_control("Type", ["🐛 Bug", "✨ Feature", "💬 General"], 
+                                        default="💬 General", label_visibility="collapsed")
+        fb_msg = st.text_area("Message", height=100, placeholder="What's on your mind?",
+                              label_visibility="collapsed", key="fb_msg")
+        if st.button("Send Feedback", type="primary", use_container_width=True, key="fb_send"):
+            if fb_msg:
+                t = fb_type.split()[1].lower() if fb_type else "general"
+                success = submit_feedback("screen", t, fb_msg)
+                if success:
                     st.success("Thanks! 🙏")
+                else:
+                    st.error("Failed to send")
