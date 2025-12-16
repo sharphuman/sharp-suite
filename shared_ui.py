@@ -624,8 +624,8 @@ def render_top_banner(show_cta: bool = True, cta_text: str = "Book a Demo", cta_
             <a href="{cta_link}" target="_blank" class="top-banner-btn-outline">{cta_text}</a>
         </div>
         <div class="top-banner-right">
-            <a href="{EXTERNAL_LINKS["website"]}" target="_blank" class="top-banner-btn-pink">sharphuman.com</a>
             <a href="{EXTERNAL_LINKS["calendly"]}" target="_blank" class="top-banner-btn-outline">Book a Free AI Consultation</a>
+            <a href="{EXTERNAL_LINKS["website"]}" target="_blank" class="top-banner-btn-pink">sharphuman.com</a>
         </div>
     </div>'''
     st.markdown(banner_html, unsafe_allow_html=True)
