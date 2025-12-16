@@ -1,4 +1,4 @@
-"""Sharp Interview - AI Interview Evaluation with Multi-Candidate TComparison"""
+"""Sharp Interview - AI Interview Evaluation with Multi-Candidate Comparison"""
 import streamlit as st
 import os
 import requests
@@ -764,7 +764,6 @@ Generate {max(4, duration // 8)} total questions across all categories, appropri
 Ensure every question has a detailed expected answer so interviewers know what "good" looks like."""
 
     return call_claude(prompt, max_tokens=6000, action="generate_questions")
-
 
 def analyze_recruiter_screen(transcript, call_type="candidate_screen", candidate_role="", company_context="", key_concerns="", jd_text=""):
     """
@@ -1707,11 +1706,11 @@ def display_candidate_result(result_data, candidate_name):
     with col1:
         st.markdown("#### Strengths")
         for s in result_data.get('strengths', []):
-            st.markdown(f"<div style='background:rgba(16,185,129,0.1);border-left:3px solid #10b981;padding:10px 14px;margin:6px 0;border-radius:0 8px 8px 0;font-size:14px;'>{s}</div>", unsafe_allow_html=True)
+            st.success(s)
     with col2:
         st.markdown("#### Concerns")
         for c in result_data.get('concerns', []):
-            st.markdown(f"<div style='background:rgba(239,68,68,0.1);border-left:3px solid #ef4444;padding:10px 14px;margin:6px 0;border-radius:0 8px 8px 0;font-size:14px;'>{c}</div>", unsafe_allow_html=True)
+            st.error(c)
     
     st.markdown("---")
     st.markdown("### Focus Area Scores")
@@ -1839,10 +1838,8 @@ if USING_SHARED:
 if not st.session_state.authenticated:
     c1, c2, c3 = st.columns([1, 1.2, 1])
     with c2:
-        st.markdown("")  # Spacer
         st.markdown("## 🎯 Sharp Interview")
-        st.markdown("AI-Powered Interview Evaluation")
-        st.markdown("---")
+        st.caption("AI-Powered Interview Evaluation")
         t1, t2 = st.tabs(["Log In", "Sign Up"])
         with t1:
             email = st.text_input("Email", key="l_email")
@@ -1883,7 +1880,7 @@ if not st.session_state.authenticated:
 
 # Status badge for working state
 if st.session_state.working_on:
-    st.markdown(f'<div class="status-badge">{st.session_state.working_on}</div>', unsafe_allow_html=True)
+    st.toast(st.session_state.working_on)
 
 # Top Banner (shared UI)
 if USING_SHARED:
@@ -2245,7 +2242,7 @@ with tab_evaluate:
             
             if st.session_state.get(f"show_reason_{candidate_key}"):
                 with st.container():
-                    st.markdown('<div class="input-card" style="margin-top:12px;">', unsafe_allow_html=True)
+                    
                     st.markdown("**What went wrong?**")
                     
                     reason_options = FEEDBACK_REASONS["thumbs_down"]
@@ -2277,7 +2274,7 @@ with tab_evaluate:
                             st.session_state[f"show_reason_{candidate_key}"] = False
                             st.rerun()
                     
-                    st.markdown('</div>', unsafe_allow_html=True)
+                    
         
         # ============================================
         # ACTION TABS AT BOTTOM (no scroll needed)
@@ -2328,7 +2325,7 @@ with tab_evaluate:
         col1, col2 = st.columns(2)
         
         with col1:
-            st.markdown('<div class="input-card">', unsafe_allow_html=True)
+            
             st.markdown("**📄 Job Description**")
             jd_src = st.radio("Source:", ["📁 Upload", "📜 History", "📝 Paste"], horizontal=True, key=f"jd_src_{candidate_num}")
             
@@ -2353,9 +2350,9 @@ with tab_evaluate:
                     st.info("No saved JDs")
             else:
                 jd_text = st.text_area("Paste JD:", height=150, key=f"jd_paste_{candidate_num}")
-            st.markdown('</div>', unsafe_allow_html=True)
             
-            st.markdown('<div class="input-card">', unsafe_allow_html=True)
+            
+            
             st.markdown("**📋 Candidate CV**")
             cv_src = st.radio("Source:", ["📁 Upload", "📝 Paste"], horizontal=True, key=f"cv_src_{candidate_num}")
             
@@ -2370,10 +2367,10 @@ with tab_evaluate:
                         st.warning(cv_text)
             else:
                 cv_text = st.text_area("Paste CV:", height=150, key=f"cv_paste_{candidate_num}")
-            st.markdown('</div>', unsafe_allow_html=True)
+            
         
         with col2:
-            st.markdown('<div class="input-card">', unsafe_allow_html=True)
+            
             st.markdown("**🎙️ Interview Transcript**")
             trans_src = st.radio("Source:", ["📁 Upload", "📝 Paste"], horizontal=True, key=f"trans_src_{candidate_num}")
             
@@ -2397,23 +2394,23 @@ with tab_evaluate:
                         st.warning(transcript)
             else:
                 transcript = st.text_area("Paste Transcript:", height=200, placeholder="Interviewer: Thanks for joining...\nCandidate: Thank you...", key=f"trans_paste_{candidate_num}")
-            st.markdown('</div>', unsafe_allow_html=True)
+            
             
             # Check if settings are locked from previous candidate
             settings_locked = st.session_state.locked_settings is not None
             locked = st.session_state.locked_settings or {}
             
-            st.markdown('<div class="input-card">', unsafe_allow_html=True)
+            
             st.markdown("**🎯 Focus Areas**")
             if settings_locked:
                 st.info(f"🔒 Locked for fair comparison: {', '.join(locked.get('focus_areas', []))}")
                 focus_areas = locked.get('focus_areas', ["Technical Skills", "Communication", "Problem Solving"])
             else:
                 focus_areas = st.multiselect("Select:", FOCUS_AREAS, default=["Technical Skills", "Communication", "Problem Solving"], key=f"focus_{candidate_num}")
-            st.markdown('</div>', unsafe_allow_html=True)
+            
             
             # Analysis Settings (Options 1-3)
-            st.markdown('<div class="input-card">', unsafe_allow_html=True)
+            
             st.markdown("**⚙️ Analysis Settings**")
             
             if settings_locked:
@@ -2459,7 +2456,7 @@ with tab_evaluate:
                 help="The AI will specifically look for evidence related to your concerns"
             )
             
-            st.markdown('</div>', unsafe_allow_html=True)
+            
         
         st.markdown("---")
         
@@ -2527,7 +2524,7 @@ with tab_questions:
     col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown('<div class="input-card">', unsafe_allow_html=True)
+        
         st.markdown("**Job Details**")
         job_title = st.text_input("Job Title", placeholder="Senior Software Engineer", key="q_title")
         
@@ -2554,18 +2551,18 @@ with tab_questions:
                 st.info("No saved JDs")
         else:
             requirements = st.text_area("Requirements:", height=150, key="q_requirements")
-        st.markdown('</div>', unsafe_allow_html=True)
+        
     
     with col2:
-        st.markdown('<div class="input-card">', unsafe_allow_html=True)
+        
         st.markdown("**Interview Settings**")
         stage = st.selectbox("Stage", INTERVIEW_STAGES, key="q_stage")
         duration = st.slider("Duration (min)", 15, 90, 45, 5, key="q_duration")
         q_focus = st.multiselect("Focus Areas", FOCUS_AREAS, default=["Technical Skills", "Communication"], key="q_focus")
         exclude_illegal = st.checkbox("Exclude illegal questions", value=True, key="q_exclude")
-        st.markdown('</div>', unsafe_allow_html=True)
         
-        st.markdown('<div class="input-card">', unsafe_allow_html=True)
+        
+        
         st.markdown("**Candidate CV (optional)**")
         q_cv_src = st.radio("Source:", ["None", "📁 Upload", "📝 Paste"], horizontal=True, key="q_cv_src")
         
@@ -2578,10 +2575,10 @@ with tab_questions:
                     st.success("Loaded")
         elif q_cv_src == "📝 Paste":
             q_cv_text = st.text_area("Paste CV:", height=100, key="q_cv_paste")
-        st.markdown('</div>', unsafe_allow_html=True)
+        
         
         # New: Question Style and Difficulty Settings
-        st.markdown('<div class="input-card">', unsafe_allow_html=True)
+        
         st.markdown("**⚙️ Question Settings**")
         
         # Question Style
@@ -2615,7 +2612,7 @@ with tab_questions:
             help="Questions will probe for fit with your specific environment"
         )
         
-        st.markdown('</div>', unsafe_allow_html=True)
+        
     
     st.markdown("---")
     
@@ -2855,11 +2852,11 @@ with tab_coach:
                 with c1:
                     st.markdown("#### 💪 Your Strengths")
                     for s in a.get('recruiter_strengths', []):
-                        st.markdown(f"<div style='background:rgba(16,185,129,0.1);border-left:3px solid #10b981;padding:12px;margin:8px 0;border-radius:0 8px 8px 0;'>{s}</div>", unsafe_allow_html=True)
+                        st.success(s)
                 with c2:
                     st.markdown("#### 🎯 Priority Improvements")
                     for i in a.get('priority_improvements', []):
-                        st.markdown(f"<div style='background:rgba(239,68,68,0.1);border-left:3px solid #ef4444;padding:12px;margin:8px 0;border-radius:0 8px 8px 0;'>{i}</div>", unsafe_allow_html=True)
+                        st.warning(i)
                 
                 # Skills Breakdown
                 st.markdown("---")
@@ -3039,7 +3036,7 @@ with tab_coach:
         col1, col2 = st.columns(2)
         
         with col1:
-            st.markdown('<div class="input-card">', unsafe_allow_html=True)
+            
             st.markdown("**Call Details**")
             
             call_type = st.selectbox(
@@ -3079,10 +3076,10 @@ with tab_coach:
                 height=68,
                 key="recruiter_concerns"
             )
-            st.markdown('</div>', unsafe_allow_html=True)
+            
             
             # JD Upload for fit analysis
-            st.markdown('<div class="input-card">', unsafe_allow_html=True)
+            
             st.markdown("**📋 Job Description (optional)**")
             st.caption("Upload JD to analyze if candidate fits the role requirements")
             
@@ -3100,10 +3097,10 @@ with tab_coach:
                 if rc_jd_text:
                     st.success("✅ JD provided - Will analyze candidate fit")
             
-            st.markdown('</div>', unsafe_allow_html=True)
+            
         
         with col2:
-            st.markdown('<div class="input-card">', unsafe_allow_html=True)
+            
             st.markdown("**Call Transcript**")
             
             input_method = st.radio(
@@ -3134,7 +3131,7 @@ with tab_coach:
                     if recruiter_transcript and not recruiter_transcript.startswith("["):
                         st.success(f"✅ Loaded: {len(recruiter_transcript):,} characters")
             
-            st.markdown('</div>', unsafe_allow_html=True)
+            
         
         st.markdown("---")
         
