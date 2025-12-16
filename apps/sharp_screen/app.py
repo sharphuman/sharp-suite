@@ -17,11 +17,10 @@ GOD_PASSWORD = "G0DHum@n101!!!"
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 APP_URLS = {
-    "portal": "https://demo.sharphuman.com", "jd": "https://jd.sharphuman.com",
-    "screen": "https://screen.sharphuman.com", "interview": "https://hire.sharphuman.com",
-    "source": "https://outreach.sharphuman.com", "content": "https://content.sharphuman.com",
-    "sales": "https://sales.sharphuman.com", "reach": "https://reach.sharphuman.com",
-    "assistant": "https://assistant.sharphuman.com", "admin": "https://admin.sharphuman.com",
+    "portal": "https://portal.sharphuman.com", "jd": "https://jd.sharphuman.com",
+    "screen": "https://screen.sharphuman.com", "interview": "https://interview.sharphuman.com",
+    "outreach": "https://outreach.sharphuman.com", "content": "https://content.sharphuman.com",
+    "sales": "https://sales.sharphuman.com", "admin": "https://admin.sharphuman.com",
 }
 
 # ============================================
@@ -117,7 +116,7 @@ def get_user_email():
 def build_app_url(app_name):
     base = APP_URLS.get(app_name, "")
     token = st.session_state.get("session_token", "")
-    return f"{base}?auth={token}" if base and token else base
+    return f"{base}?token={token}" if base and token else base
 
 # ============================================
 # DATABASE FUNCTIONS
@@ -932,8 +931,8 @@ with st.sidebar:
     # Navigation with icons
     apps = [
         ("portal", "🏠 Portal"), ("jd", "📝 JD Writer"), ("screen", "🔍 CV Screener"),
-        ("interview", "🎯 Interview"), ("source", "🎣 Sourcing"), ("content", "✍️ Content"),
-        ("sales", "💰 Sales"), ("reach", "🚀 Reach"), ("assistant", "🤖 Assistant"),
+        ("interview", "🎯 Interview"), ("outreach", "🚀 Outreach"), ("content", "✍️ Content"),
+        ("sales", "💰 Sales"),
     ]
     
     for key, label in apps:
