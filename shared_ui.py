@@ -814,7 +814,7 @@ def render_sidebar(
         st.markdown(f"<p style='color: {COLORS['text_muted']}; font-size: 11px; margin: 0 0 8px 4px; text-transform: uppercase; letter-spacing: 0.5px;'>🧭 Navigation</p>", unsafe_allow_html=True)
         
         for app_key, icon, label in APP_LABELS:
-            url = f"{APP_URLS.get(app_key, '')}?auth={session_token}" if session_token else APP_URLS.get(app_key, "")
+            url = f"{APP_URLS.get(app_key, '')}?token={session_token}" if session_token else APP_URLS.get(app_key, "")
             
             if app_key == current_app:
                 # Current app - highlighted in pink
@@ -839,7 +839,7 @@ def render_sidebar(
         # Admin link (for god users)
         if user_plan == "god":
             st.markdown("---")
-            admin_url = f"{APP_URLS.get('admin', '')}?auth={session_token}" if session_token else APP_URLS.get('admin', "")
+            admin_url = f"{APP_URLS.get('admin', '')}?token={session_token}" if session_token else APP_URLS.get('admin', "")
             st.link_button("⚙️ Admin Dashboard", admin_url, use_container_width=True)
         
         st.markdown("---")
