@@ -1,4 +1,4 @@
-"""Sharp Screen - Advanced CV Screening with Cross-App TAuth"""
+"""Sharp Screen - Advanced CV Screening with Cross-App Auth"""
 import streamlit as st
 import os
 import requests
@@ -9,19 +9,40 @@ import re
 import io
 import zipfile
 from xml.etree import ElementTree
+import sys
 
-SUPABASE_URL = "https://qkjtprqgblnfftrotyks.supabase.co"
-SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFranRwcnFnYmxuZmZ0cm90eWtzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUzNTgzNDAsImV4cCI6MjA4MDkzNDM0MH0.pVzSq4M5i58zBGl7OPDhNL9qYBcg-bz8MVrBI5MQSkw"
-SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", SUPABASE_ANON_KEY)
-GOD_PASSWORD = "G0DHum@n101!!!"
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+# Add parent directory for shared modules
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
-APP_URLS = {
-    "portal": "https://portal.sharphuman.com", "jd": "https://jd.sharphuman.com",
-    "screen": "https://screen.sharphuman.com", "interview": "https://interview.sharphuman.com",
-    "outreach": "https://outreach.sharphuman.com", "content": "https://content.sharphuman.com",
-    "sales": "https://sales.sharphuman.com", "admin": "https://admin.sharphuman.com",
-}
+# Import shared UI components
+try:
+    from shared_ui import (
+        apply_global_styles,
+        render_top_banner,
+        render_sidebar,
+        render_header,
+        render_feedback_widget,
+        inject_ga4,
+        COLORS
+    )
+    from shared_config import (
+        SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_KEY,
+        ANTHROPIC_API_KEY, GOD_PASSWORD, APP_URLS
+    )
+    USING_SHARED = True
+except ImportError:
+    USING_SHARED = False
+    SUPABASE_URL = "https://qkjtprqgblnfftrotyks.supabase.co"
+    SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFranRwcnFnYmxuZmZ0cm90eWtzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUzNTgzNDAsImV4cCI6MjA4MDkzNDM0MH0.pVzSq4M5i58zBGl7OPDhNL9qYBcg-bz8MVrBI5MQSkw"
+    SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", SUPABASE_ANON_KEY)
+    GOD_PASSWORD = "G0DHum@n101!!!"
+    ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+    APP_URLS = {
+        "portal": "https://portal.sharphuman.com", "jd": "https://jd.sharphuman.com",
+        "screen": "https://screen.sharphuman.com", "interview": "https://interview.sharphuman.com",
+        "outreach": "https://outreach.sharphuman.com", "content": "https://content.sharphuman.com",
+        "sales": "https://sales.sharphuman.com", "admin": "https://admin.sharphuman.com",
+    }
 
 # ============================================
 # AUTH FUNCTIONS
@@ -807,6 +828,12 @@ st.set_page_config(page_title="Sharp Screen", page_icon="🔍", layout="wide")
 init_session()
 check_url_auth()
 
+# Apply shared UI if available
+if USING_SHARED:
+    inject_ga4()
+    apply_global_styles()
+    render_top_banner(show_cta=True, cta_text="Book a Demo")
+
 # Styles
 st.markdown("""<style>
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap');
@@ -919,36 +946,40 @@ if st.session_state.working_on:
     st.markdown(f'<div class="status-badge">{st.session_state.working_on}</div>', unsafe_allow_html=True)
 
 # Sidebar with ICONS
-with st.sidebar:
-    st.markdown(f"""<div class="user-card">
-        <p style="color:#9ca3af;margin:0;font-size:12px;">Logged in as</p>
-        <p style="color:#fff;margin:4px 0;font-weight:600;">{get_user_email()}</p>
-        <p style="color:#6366f1;margin:0;font-size:12px;text-transform:uppercase;">{st.session_state.get('user_plan','free')} plan</p>
-    </div>""", unsafe_allow_html=True)
-    
-    st.markdown("**Apps**")
-    
-    # Navigation with icons
-    apps = [
-        ("portal", "🏠 Portal"), ("jd", "📝 JD Writer"), ("screen", "🔍 CV Screener"),
-        ("interview", "🎯 Interview"), ("outreach", "🚀 Outreach"), ("content", "✍️ Content"),
-        ("sales", "💰 Sales"),
-    ]
-    
-    for key, label in apps:
-        if key == "screen":
-            st.markdown(f"<div style='background:linear-gradient(135deg,#6366f1,#8b5cf6);padding:10px 16px;border-radius:8px;text-align:center;margin:4px 0;color:white;font-weight:600;'>{label} ◀</div>", unsafe_allow_html=True)
-        else:
-            st.link_button(label, build_app_url(key), use_container_width=True)
-    
-    if st.session_state.get("is_god"):
+# Sidebar - Use shared UI if available
+if USING_SHARED:
+    render_sidebar(
+        current_app="screen",
+        user_email=get_user_email(),
+        user_plan=st.session_state.get('user_plan', 'free'),
+        session_token=st.session_state.get('session_token', '')
+    )
+else:
+    with st.sidebar:
+        st.markdown(f"""<div class="user-card">
+            <p style="color:#9ca3af;margin:0;font-size:12px;">Logged in as</p>
+            <p style="color:#fff;margin:4px 0;font-weight:600;">{get_user_email()}</p>
+            <p style="color:#6366f1;margin:0;font-size:12px;text-transform:uppercase;">{st.session_state.get('user_plan','free')} plan</p>
+        </div>""", unsafe_allow_html=True)
+        
+        st.markdown("**Apps**")
+        apps = [
+            ("portal", "🏠 Portal"), ("jd", "📝 JD Writer"), ("screen", "🔍 CV Screener"),
+            ("interview", "🎯 Interview"), ("outreach", "🚀 Outreach"), ("content", "✍️ Content"),
+            ("sales", "💰 Sales"),
+        ]
+        for key, label in apps:
+            if key == "screen":
+                st.markdown(f"<div style='background:linear-gradient(135deg,#6366f1,#8b5cf6);padding:10px 16px;border-radius:8px;text-align:center;margin:4px 0;color:white;font-weight:600;'>{label} ◀</div>", unsafe_allow_html=True)
+            else:
+                st.link_button(label, build_app_url(key), use_container_width=True)
+        if st.session_state.get("is_god"):
+            st.markdown("---")
+            st.link_button("⚙️ Admin", build_app_url("admin"), use_container_width=True)
         st.markdown("---")
-        st.link_button("⚙️ Admin", build_app_url("admin"), use_container_width=True)
-    
-    st.markdown("---")
-    if st.button("🚪 Logout", use_container_width=True):
-        for k in list(st.session_state.keys()): del st.session_state[k]
-        st.rerun()
+        if st.button("🚪 Logout", use_container_width=True):
+            for k in list(st.session_state.keys()): del st.session_state[k]
+            st.rerun()
 
 # Header
 st.markdown("""<div style="display:flex;align-items:center;gap:16px;padding:20px 0;border-bottom:1px solid rgba(99,102,241,0.2);margin-bottom:30px;">
