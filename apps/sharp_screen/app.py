@@ -1,4 +1,4 @@
-"""Sharp Screen - Advanced CV Screening with Cross-App Auth"""
+"""Sharp Screen - Advanced CV Screening with Cross-App TAuth"""
 import streamlit as st
 import os
 import requests
