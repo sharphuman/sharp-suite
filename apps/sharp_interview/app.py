@@ -1,4 +1,4 @@
-"""Sharp Interview - AI Interview Evaluation with Multi-Candidate Comparison"""
+"""Sharp Interview - AI Interview Evaluation with Multi-Candidate TComparison"""
 import streamlit as st
 import os
 import requests
