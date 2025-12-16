@@ -8,6 +8,37 @@ import json
 import re
 import io
 import tempfile
+import sys
+
+# Add parent directory for shared modules
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+
+# ============================================
+# SHARED MODULE IMPORTS
+# ============================================
+try:
+    from shared_config import (
+        SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_KEY,
+        ANTHROPIC_API_KEY, GOD_PASSWORD, APP_URLS, CLAUDE_MODEL
+    )
+    from shared_ui import (
+        apply_global_styles,
+        render_top_banner,
+        render_header,
+        render_sidebar,
+        render_feedback_widget,
+        COLORS
+    )
+    USING_SHARED = True
+except ImportError:
+    USING_SHARED = False
+    SUPABASE_URL = "https://qkjtprqgblnfftrotyks.supabase.co"
+    SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFranRwcnFnYmxuZmZ0cm90eWtzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUzNTgzNDAsImV4cCI6MjA4MDkzNDM0MH0.pVzSq4M5i58zBGl7OPDhNL9qYBcg-bz8MVrBI5MQSkw"
+    SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", SUPABASE_ANON_KEY)
+    GOD_PASSWORD = os.environ.get("GOD_PASSWORD", "G0DHum@n101!!!")
+    ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+    CLAUDE_MODEL = "claude-sonnet-4-20250514"
+    APP_URLS = {"portal": "https://demo.sharphuman.com", "jd": "https://jd.sharphuman.com", "screen": "https://screen.sharphuman.com", "interview": "https://interview.sharphuman.com", "source": "https://outreach.sharphuman.com", "content": "https://content.sharphuman.com", "sales": "https://sales.sharphuman.com", "reach": "https://reach.sharphuman.com", "assistant": "https://assistant.sharphuman.com", "admin": "https://admin.sharphuman.com"}
 
 # Try to import few-shot examples
 try:
@@ -17,14 +48,6 @@ except ImportError:
     HAS_EXAMPLES = False
     def get_sales_few_shot_examples():
         return ""
-
-SUPABASE_URL = "https://qkjtprqgblnfftrotyks.supabase.co"
-SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFranRwcnFnYmxuZmZ0cm90eWtzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUzNTgzNDAsImV4cCI6MjA4MDkzNDM0MH0.pVzSq4M5i58zBGl7OPDhNL9qYBcg-bz8MVrBI5MQSkw"
-SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", SUPABASE_ANON_KEY)
-GOD_PASSWORD = os.environ.get("GOD_PASSWORD", "G0DHum@n101!!!")
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-
-APP_URLS = {"portal": "https://demo.sharphuman.com", "jd": "https://jd.sharphuman.com", "screen": "https://screen.sharphuman.com", "interview": "https://interview.sharphuman.com", "source": "https://outreach.sharphuman.com", "content": "https://content.sharphuman.com", "sales": "https://sales.sharphuman.com", "reach": "https://reach.sharphuman.com", "assistant": "https://assistant.sharphuman.com", "admin": "https://admin.sharphuman.com"}
 
 # ============================================
 # COACH PERSONAS (Option 1)
@@ -723,6 +746,32 @@ Be specific. Use exact quotes with timestamps. Be constructive but honest."""
 
     return call_claude(prompt, 8000, f"analyze_{call_type}")
 
+
+def analyze_recruiting_bd_call(transcript, call_type="cold_outreach", company="", title="", services=None, concerns=""):
+    """Analyze a recruiting BD call - selling recruiting services to clients."""
+    services = services or ["Permanent"]
+    prompt = f"""You are an expert recruiting sales trainer analyzing a BD call.
+
+CALL: {call_type.replace('_',' ').title()} | Prospect: {title} at {company} | Services: {', '.join(services)}
+{f"FOCUS ON: {concerns}" if concerns else ""}
+
+EVALUATE THESE BD SKILLS:
+1. Opening & Permission (10%) - Earned right to continue? Value hook?
+2. Hiring Pain Discovery (25%) - Open roles? Time-to-fill? Cost of vacancy?
+3. Value Proposition (20%) - vs internal? vs other agencies? Success stories?
+4. Objection Handling (20%) - WATCH: "fees too high", "use internal", "already have agency", "send candidates first"
+5. Fee Discussion (15%) - Held fee? Justified value? Contingent/retained/exclusive?
+6. Close & Next Steps (10%) - Got commitment? Job order? Meeting?
+
+TRANSCRIPT:
+{transcript[:18000]}
+
+Return JSON:
+```json
+{{"overall_score": <0-100>, "overall_summary": "<2-3 sentences>", "skills": [{{"skill_name": "<n>", "score": <0-10>, "what_worked": ["<x>"], "what_needed_improvement": ["<x>"], "fix_for_next_call": "<script>"}}], "objections_breakdown": [{{"objection": "<text>", "pre_handled": <bool>, "post_handled": <bool>, "effectiveness_score": <0-10>, "fix_for_next_call": "<script>"}}], "strengths": ["<x>"], "priority_improvements": ["<x>"], "deal_outcome": {{"likely_outcome": "<Won|Pending|Lost>", "fee_discussed": "<x>", "exclusivity": "<x>"}}, "coaching_summary": "<paragraph>"}}
+```"""
+    return call_claude(prompt, 5000, "recruiting_bd")
+
 st.set_page_config(page_title="Sharp Sales", page_icon="💰", layout="wide")
 init_session()
 check_url_auth()
@@ -730,25 +779,27 @@ check_url_auth()
 st.markdown("""<style>
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap');
 *, *::before, *::after { font-family: 'Nunito', sans-serif !important; }
-.stApp, [data-testid="stAppViewContainer"] { background: #0a0a0f !important; }
+.stApp, [data-testid="stAppViewContainer"] { background: #1a1a1a !important; }
 [data-testid="stHeader"] { background: transparent !important; }
-section[data-testid="stSidebar"] { background: #0d0d14 !important; border-right: 1px solid rgba(99,102,241,0.2); }
-section[data-testid="stSidebar"] > div { background: #0d0d14 !important; }
+section[data-testid="stSidebar"] { background: #1a1a1a !important; border-right: 1px solid rgba(255,255,255,0.1); }
+section[data-testid="stSidebar"] > div { background: #1a1a1a !important; }
 section[data-testid="stSidebar"] * { color: #e5e5e5 !important; }
 section[data-testid="stSidebar"] > div > div:first-child > div:first-child { display: none !important; }
 h1,h2,h3,h4,h5,h6 { color: #fff !important; }
 p,span,label,div,li { color: #e5e5e5; }
-.stTextInput > div > div > input, .stTextArea > div > div > textarea, .stSelectbox > div > div, [data-baseweb="select"] > div { background: #12121a !important; border: 1px solid rgba(99,102,241,0.3) !important; color: #fff !important; border-radius: 8px !important; }
+.stTextInput > div > div > input, .stTextArea > div > div > textarea, .stSelectbox > div > div, [data-baseweb="select"] > div { background: #2a2a2a !important; border: 1px solid rgba(255,255,255,0.1) !important; color: #fff !important; border-radius: 8px !important; }
 .stButton > button { background: linear-gradient(135deg, #6366f1, #8b5cf6) !important; color: white !important; border: none !important; border-radius: 8px !important; font-weight: 600 !important; }
-.stDownloadButton > button { background: #1a1a2e !important; border: 1px solid rgba(99,102,241,0.3) !important; }
+.stDownloadButton > button { background: #2a2a2a !important; border: 1px solid rgba(255,255,255,0.1) !important; }
 .stRadio > div { flex-direction: row !important; gap: 8px; flex-wrap: wrap; }
-.stRadio > div > label { background: #12121a !important; padding: 10px 16px !important; border-radius: 8px !important; border: 1px solid rgba(99,102,241,0.2) !important; }
-[data-testid="stFileUploader"] { background: #12121a !important; border: 1px dashed rgba(99,102,241,0.3) !important; border-radius: 8px !important; }
+.stRadio > div > label { background: #2a2a2a !important; padding: 10px 16px !important; border-radius: 8px !important; border: 1px solid rgba(255,255,255,0.1) !important; }
+[data-testid="stFileUploader"] { background: #2a2a2a !important; border: 1px dashed rgba(255,255,255,0.2) !important; border-radius: 8px !important; }
 .user-card { background: rgba(99,102,241,0.1); border-radius: 12px; padding: 16px; margin-bottom: 20px; }
-.input-section { background: #12121a; border: 1px solid rgba(99,102,241,0.2); border-radius: 12px; padding: 20px; margin: 12px 0; }
-.transcript-quote { background: #1a1a2e; border-left: 3px solid #6366f1; padding: 12px 16px; margin: 8px 0; border-radius: 0 8px 8px 0; font-style: italic; color: #a5b4fc; }
+.input-section { background: #2a2a2a; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 20px; margin: 12px 0; }
+.transcript-quote { background: #333; border-left: 3px solid #6366f1; padding: 12px 16px; margin: 8px 0; border-radius: 0 8px 8px 0; font-style: italic; color: #a5b4fc; }
 .improvement-box { background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.3); border-radius: 8px; padding: 16px; margin-top: 12px; }
-.status-badge { position: fixed; top: 70px; right: 20px; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; padding: 10px 20px; border-radius: 25px; font-weight: 600; z-index: 999; animation: pulse 2s infinite; }
+/* Working Status Badge with Logo Spinner */
+.status-badge { position: fixed; top: 70px; right: 20px; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; padding: 12px 24px 12px 50px; border-radius: 25px; font-weight: 600; z-index: 9999; box-shadow: 0 4px 15px rgba(99,102,241,0.4); }
+.status-badge::before { content: ''; position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 28px; height: 28px; background: url('https://assets.sharphuman.com/logo_spinner_small_transparent.png') center/contain no-repeat; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
 div[data-testid="stPopover"] button { background: linear-gradient(135deg, #6366f1, #8b5cf6) !important; color: white !important; border: none !important; border-radius: 25px !important; }
 </style>""", unsafe_allow_html=True)
@@ -796,10 +847,108 @@ with st.sidebar:
         st.rerun()
 
 # Header
-st.markdown("""<div style="display:flex;align-items:center;gap:16px;padding:20px 0;border-bottom:1px solid rgba(99,102,241,0.2);margin-bottom:30px;"><img src="https://sharphuman.com/logo1-3.png" style="width:50px;"><div><h1 style="margin:0;font-size:28px;">Sharp Sales</h1><p style="color:#9ca3af;margin:0;">AI-Powered Sales Call Analysis</p></div></div>""", unsafe_allow_html=True)
+st.markdown("""<div style="display:flex;align-items:center;gap:16px;padding:20px 0;border-bottom:1px solid rgba(99,102,241,0.2);margin-bottom:20px;"><img src="https://sharphuman.com/logo1-3.png" style="width:50px;"><div><h1 style="margin:0;font-size:28px;">Sharp Sales</h1><p style="color:#9ca3af;margin:0;">AI-Powered Sales Call Analysis</p></div></div>""", unsafe_allow_html=True)
 
-# Check for results
-if st.session_state.get('analysis_result'):
+# Mode Selector
+mode_cols = st.columns([1, 2, 1])
+with mode_cols[1]:
+    sales_mode = st.segmented_control("Mode", ["💼 General Sales", "👔 Recruiting BD"], default="💼 General Sales", label_visibility="collapsed")
+
+st.markdown("---")
+
+# Initialize BD state
+if 'bd_result' not in st.session_state:
+    st.session_state.bd_result = None
+
+# ===== RECRUITING BD MODE =====
+if sales_mode == "👔 Recruiting BD":
+    st.markdown("### 👔 Recruiting BD Call Analyzer")
+    st.caption("Analyze your client acquisition calls - selling recruiting services to prospects")
+    
+    if st.session_state.bd_result:
+        if st.button("← Analyze Another BD Call"):
+            st.session_state.bd_result = None
+            st.rerun()
+        try:
+            m = re.search(r'```json\s*(.*?)\s*```', st.session_state.bd_result, re.DOTALL)
+            a = json.loads(m.group(1) if m else st.session_state.bd_result)
+            score = a.get('overall_score', 0)
+            color = "#10b981" if score >= 70 else "#eab308" if score >= 50 else "#ef4444"
+            st.markdown(f"""<div style="background:linear-gradient(135deg,rgba(99,102,241,0.1),rgba(139,92,246,0.1));border-radius:16px;padding:30px;text-align:center;margin:20px 0;">
+                <span style="background:rgba(219,39,119,0.2);color:#f472b6;padding:4px 12px;border-radius:12px;font-size:12px;">Recruiting BD</span>
+                <p style="color:#9ca3af;margin:12px 0 0;">YOUR PERFORMANCE</p>
+                <p style="color:{color};font-size:64px;font-weight:bold;margin:10px 0;">{score}<span style="font-size:24px;color:#6b7280;">/100</span></p>
+                <p style="color:#e5e5e5;">{a.get('overall_summary', '')}</p>
+            </div>""", unsafe_allow_html=True)
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown("#### 💪 Strengths")
+                for s in a.get('strengths', []): st.success(s)
+            with c2:
+                st.markdown("#### 🎯 Improvements")
+                for i in a.get('priority_improvements', []): st.warning(i)
+            st.markdown("---")
+            for skill in a.get('skills', []):
+                with st.expander(f"**{skill.get('skill_name')}** — {skill.get('score', 0)}/10"):
+                    for w in skill.get('what_worked', []): st.markdown(f"✅ {w}")
+                    for w in skill.get('what_needed_improvement', []): st.markdown(f"❌ {w}")
+                    if skill.get('fix_for_next_call'): st.info(f"⚡ {skill.get('fix_for_next_call')}")
+            objections = a.get('objections_breakdown', [])
+            if objections:
+                st.markdown("---")
+                st.markdown("### 🛡️ Objection Handling")
+                for i, obj in enumerate(objections, 1):
+                    with st.expander(f"Objection {i}: {obj.get('objection', '')[:50]}... ({obj.get('effectiveness_score', 0)}/10)"):
+                        st.markdown(f"Pre: {'✅' if obj.get('pre_handled') else '❌'} | Post: {'✅' if obj.get('post_handled') else '❌'}")
+                        if obj.get('fix_for_next_call'): st.info(f"⚡ {obj.get('fix_for_next_call')}")
+            deal = a.get('deal_outcome', {})
+            if deal:
+                st.markdown("---")
+                dc1, dc2, dc3 = st.columns(3)
+                with dc1: st.metric("Outcome", deal.get('likely_outcome', '?'))
+                with dc2: st.metric("Fee", deal.get('fee_discussed', 'N/A')[:15])
+                with dc3: st.metric("Exclusivity", deal.get('exclusivity', 'N/A'))
+            st.markdown("---")
+            st.markdown(f"### 🎓 Coaching\n{a.get('coaching_summary', '')}")
+            st.download_button("📥 Download", st.session_state.bd_result, "bd_analysis.json", use_container_width=True)
+        except Exception as e:
+            st.error(f"Error: {e}")
+    else:
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown('<div class="input-section">', unsafe_allow_html=True)
+            bd_type = st.selectbox("Call Type", ["cold_outreach", "warm_intro", "inbound_lead", "referral", "follow_up"],
+                format_func=lambda x: {"cold_outreach": "❄️ Cold", "warm_intro": "🤝 Warm", "inbound_lead": "📥 Inbound", "referral": "🔗 Referral", "follow_up": "🔄 Follow-up"}.get(x, x))
+            bd_co = st.text_input("Company", placeholder="Acme Corp")
+            bd_title = st.text_input("Title", placeholder="VP Engineering")
+            bd_svc = st.multiselect("Services", ["Permanent", "Contract", "Executive", "RPO"], default=["Permanent"])
+            bd_concerns = st.text_area("Concerns (optional)", height=60, placeholder="Fee objection?")
+            st.markdown('</div>', unsafe_allow_html=True)
+        with col2:
+            st.markdown('<div class="input-section">', unsafe_allow_html=True)
+            bd_in = st.radio("Input", ["📝 Paste", "📁 Upload"], horizontal=True)
+            bd_txt = ""
+            if bd_in == "📝 Paste":
+                bd_txt = st.text_area("Transcript", height=280, placeholder="You: Hi...", key="bd_t")
+            else:
+                f = st.file_uploader("Upload", type=['txt', 'pdf', 'docx', 'vtt'], key="bd_f")
+                if f:
+                    bd_txt = extract_text_from_file(f)
+                    if bd_txt and not bd_txt.startswith("["): st.success(f"✅ {len(bd_txt):,} chars")
+            st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown("---")
+        if st.button("👔 Analyze BD Call", type="primary", use_container_width=True):
+            if len(bd_txt.strip()) < 100: st.warning("Min 100 chars")
+            else:
+                with st.spinner("Analyzing... 20-40s"):
+                    r, _ = analyze_recruiting_bd_call(bd_txt, bd_type, bd_co, bd_title, bd_svc, bd_concerns)
+                if not str(r).startswith("Error"):
+                    st.session_state.bd_result = r
+                    st.rerun()
+                else: st.error(r)
+
+# ===== GENERAL SALES MODE =====
+elif st.session_state.get('analysis_result'):
     # Results View
     if st.button("← New Analysis", type="secondary"):
         st.session_state.analysis_result = None
