@@ -77,6 +77,58 @@ FOCUS_AREAS = ["Technical Skills", "Problem Solving", "Communication", "Leadersh
 INTERVIEW_STAGES = ["Phone Screen", "Technical Round", "Hiring Manager", "Final Round", "Culture Fit", "Panel Interview"]
 
 # ============================================
+# EVALUATOR PERSONAS (Option 1)
+# ============================================
+EVALUATOR_PERSONAS = {
+    "balanced": {
+        "name": "⚖️ Balanced Reviewer",
+        "description": "Standard balanced analysis weighing pros and cons equally",
+        "system_prompt": "You are a fair and balanced interview evaluator. Weigh both strengths and weaknesses equally. Provide objective assessment without bias toward optimism or skepticism."
+    },
+    "skeptical_recruiter": {
+        "name": "🔍 Skeptical Recruiter",
+        "description": "Critical, detail-oriented, flags every inconsistency",
+        "system_prompt": "You are a veteran Technical Recruiter with 20 years of experience. You are cynical and hard to impress. Your job is to protect the company from bad hires. Scrutinize every claim. Flag gaps in employment, vague timelines, buzzword stuffing, and any exaggeration. If something seems too good to be true, call it out. Be direct and unforgiving in your assessment."
+    },
+    "hiring_manager": {
+        "name": "🎯 Hiring Manager",
+        "description": "Practical, urgent - can they hit the ground running?",
+        "system_prompt": "You are a busy Hiring Manager who needs someone to deliver results immediately. You care about: Can they do THIS job on Day 1? Look for specific project outcomes, relevant tool/stack matches, and evidence of independent delivery. Estimate ramp-up time. You have no patience for theory without practice."
+    },
+    "technical_lead": {
+        "name": "🛠️ Technical Lead",
+        "description": "Deep technical scrutiny, BS detector activated",
+        "system_prompt": "You are a Senior Technical Lead with a finely-tuned BS detector. You've interviewed hundreds of candidates who exaggerate their technical skills. Probe for DEPTH not breadth. When someone claims 'microservices architecture' - did they actually design it or just maintain it? Check for specific technical decisions, trade-offs discussed, and complexity of problems solved. Surface-level buzzword knowledge is a red flag."
+    },
+    "executive": {
+        "name": "👔 Executive/CEO",
+        "description": "Strategic fit, leadership potential, long-term value",
+        "system_prompt": "You are a CEO evaluating candidates for strategic fit and long-term potential. You care less about specific syntax and more about: problem-solving approach, business acumen, leadership qualities, cultural alignment, and growth trajectory. Can this person eventually lead a team or department? Do they think like an owner?"
+    }
+}
+
+# ============================================
+# ANALYSIS RIGOR LEVELS (Option 2)
+# ============================================
+RIGOR_LEVELS = {
+    "optimistic": {
+        "name": "🌱 Optimistic",
+        "description": "Focus on potential and strengths (good for junior roles)",
+        "prompt_modifier": "Focus on the candidate's POTENTIAL and transferable skills. Give benefit of the doubt on gaps or missing experience. This is likely a junior role where growth matters more than current expertise. Highlight what they COULD become with proper mentorship."
+    },
+    "balanced": {
+        "name": "⚖️ Balanced",
+        "description": "Standard SWOT analysis",
+        "prompt_modifier": "Provide a balanced assessment covering both strengths and weaknesses equally. Be fair but thorough."
+    },
+    "ruthless": {
+        "name": "🔥 Ruthless",
+        "description": "Assume CV is exaggerated, find reasons NOT to hire (executive roles)",
+        "prompt_modifier": "Be EXTREMELY critical. Assume the CV contains exaggerations until proven otherwise in the transcript. Actively look for reasons NOT to hire. This is a high-stakes role where a bad hire is catastrophic. Every vague answer is a red flag. Every unverified claim should lower the score. The bar is VERY high."
+    }
+}
+
+# ============================================
 # AUTH FUNCTIONS
 # ============================================
 
@@ -485,8 +537,49 @@ Generate {max(3, duration // 10)} questions appropriate for {duration} minutes. 
 # EVALUATION FUNCTIONS
 # ============================================
 
-def evaluate_candidate(candidate_name, cv_text, jd_text, transcript, focus_areas):
-    prompt = f"""You are an expert interview evaluator. Analyze this candidate's interview.
+def evaluate_candidate(candidate_name, cv_text, jd_text, transcript, focus_areas, persona="balanced", rigor="balanced", key_concerns=""):
+    """
+    Evaluate a candidate with customizable analysis settings.
+    
+    Args:
+        persona: Key from EVALUATOR_PERSONAS (skeptical_recruiter, hiring_manager, etc.)
+        rigor: Key from RIGOR_LEVELS (optimistic, balanced, ruthless)
+        key_concerns: Optional user-provided specific concerns to address
+    """
+    
+    # Get persona and rigor settings
+    persona_config = EVALUATOR_PERSONAS.get(persona, EVALUATOR_PERSONAS["balanced"])
+    rigor_config = RIGOR_LEVELS.get(rigor, RIGOR_LEVELS["balanced"])
+    
+    # Build the system context
+    system_context = f"""{persona_config['system_prompt']}
+
+ANALYSIS INTENSITY: {rigor_config['name']}
+{rigor_config['prompt_modifier']}"""
+    
+    # Add key concerns if provided (Option 3)
+    concerns_section = ""
+    if key_concerns and key_concerns.strip():
+        concerns_section = f"""
+## SPECIFIC CONCERNS TO ADDRESS
+The hiring team has flagged these specific concerns. Pay special attention to evidence for/against:
+{key_concerns}
+"""
+
+    # Chain of Thought verification steps (Option 4)
+    cot_instructions = """
+## ANALYSIS PROCESS (Follow these steps internally before scoring)
+Before providing your final assessment, you MUST:
+1. **TIMELINE CHECK**: Extract all dates and calculate actual years of experience. Flag any gaps > 6 months.
+2. **CLAIM VERIFICATION**: For each major CV claim, find supporting evidence in the transcript. Mark as VERIFIED, UNVERIFIED, or CONTRADICTED.
+3. **RED FLAG SCAN**: List any evasive answers, inconsistencies, or concerning patterns.
+4. **EVIDENCE MAPPING**: For each focus area score, cite specific transcript quotes.
+5. **FINAL SCORING**: Only after steps 1-4, calculate the overall score based on evidence, not impressions.
+"""
+
+    prompt = f"""{system_context}
+
+You are evaluating an interview. Follow the analysis process carefully.
 
 ## CANDIDATE: {candidate_name}
 
@@ -500,19 +593,21 @@ def evaluate_candidate(candidate_name, cv_text, jd_text, transcript, focus_areas
 {transcript[:12000]}
 
 ## FOCUS AREAS: {', '.join(focus_areas)}
+{concerns_section}
+{cot_instructions}
 
 ---
 
-## EVALUATION RULES:
-1. **PROOF vs CLAIMS**: Score based on DEMONSTRATED ability with specifics, not just claims
-2. **CV Verification**: Check if CV claims are backed up in the interview
-3. **Red Flags**: Note evasive answers, inconsistencies, or gaps
-
-Return JSON:
+## OUTPUT FORMAT
+Return your analysis as JSON:
 
 ```json
 {{
     "candidate_name": "{candidate_name}",
+    "analysis_settings": {{
+        "persona": "{persona_config['name']}",
+        "rigor": "{rigor_config['name']}"
+    }},
     "overall_score": <0-100>,
     "overall_summary": "<2-3 sentence summary>",
     "recommendation": "<STRONG HIRE | HIRE | LEAN YES | ON THE FENCE | LEAN NO | NO HIRE | STRONG NO>",
@@ -522,32 +617,33 @@ Return JSON:
             "area": "<Focus Area>",
             "score": <0-10>,
             "score_label": "<Excellent|Good|Adequate|Weak|Not Demonstrated>",
-            "evidence": ["<quote from transcript>"],
+            "evidence": ["<exact quote from transcript>"],
             "assessment": "<2-3 sentence assessment>"
         }}
     ],
     "cv_verification": {{
         "trust_score": <0-10>,
-        "verified_claims": ["<verified>"],
-        "unverified_claims": ["<not demonstrated>"],
-        "inconsistencies": ["<any contradictions>"]
+        "verified_claims": ["<claim> - VERIFIED: <transcript evidence>"],
+        "unverified_claims": ["<claim> - NOT DISCUSSED in interview"],
+        "inconsistencies": ["<CV says X but transcript reveals Y>"]
     }},
     "interview_quality": {{
         "communication_score": <0-10>,
         "depth_of_answers": "<Deep|Moderate|Surface-level>",
         "engagement_level": "<High|Medium|Low>",
-        "red_flags": ["<concern>"],
-        "green_flags": ["<positive>"]
+        "red_flags": ["<specific concern with evidence>"],
+        "green_flags": ["<specific positive with evidence>"]
     }},
     "strengths": ["<strength 1>", "<strength 2>"],
     "concerns": ["<concern 1>", "<concern 2>"],
-    "questions_for_next_round": ["<question>"],
-    "hiring_risk": "<risk if hired>",
-    "not_hiring_risk": "<risk if not hired>"
+    {"\"key_concerns_addressed\": {{" + '"' + key_concerns[:100].replace('"', "'") + '": "<your assessment of this specific concern>"}},' if key_concerns else ""}
+    "questions_for_next_round": ["<question to probe further>"],
+    "hiring_risk": "<what could go wrong if we hire them>",
+    "not_hiring_risk": "<what we might miss out on if we don't hire>"
 }}
 ```
 
-Be specific. Use exact quotes as evidence."""
+Be specific. Use exact quotes as evidence. Your assessment should reflect the {persona_config['name']} perspective with {rigor_config['name']} rigor."""
 
     return call_claude(prompt, max_tokens=6000, action="evaluate_candidate")
 
@@ -1109,12 +1205,26 @@ def display_candidate_result(result_data, candidate_name):
     rec = result_data.get('recommendation', 'N/A')
     rec_color = "#10b981" if "HIRE" in rec and "NO" not in rec else "#ef4444" if "NO" in rec else "#eab308"
     
+    # Get analysis settings if available
+    analysis_settings = result_data.get('analysis_settings', {})
+    persona_used = analysis_settings.get('persona', '')
+    rigor_used = analysis_settings.get('rigor', '')
+    settings_badge = ""
+    if persona_used or rigor_used:
+        settings_badge = f"""
+        <div style="display:flex;gap:8px;margin-top:8px;">
+            {f'<span style="background:rgba(99,102,241,0.2);color:#a5b4fc;padding:4px 10px;border-radius:12px;font-size:11px;">{persona_used}</span>' if persona_used else ''}
+            {f'<span style="background:rgba(139,92,246,0.2);color:#c4b5fd;padding:4px 10px;border-radius:12px;font-size:11px;">{rigor_used}</span>' if rigor_used else ''}
+        </div>
+        """
+    
     st.markdown(f"""
     <div style="background:linear-gradient(135deg,rgba(99,102,241,0.1),rgba(139,92,246,0.1));border-radius:16px;padding:30px;margin-bottom:24px;">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;">
             <div>
                 <h2 style="margin:0;color:#fff;">{candidate_name}</h2>
                 <p style="color:#9ca3af;margin:4px 0 0;">{result_data.get('overall_summary', '')}</p>
+                {settings_badge}
             </div>
             <div style="text-align:center;">
                 <p style="color:#9ca3af;margin:0;font-size:12px;">OVERALL SCORE</p>
@@ -1750,6 +1860,46 @@ with tab_evaluate:
             st.markdown("**🎯 Focus Areas**")
             focus_areas = st.multiselect("Select:", FOCUS_AREAS, default=["Technical Skills", "Communication", "Problem Solving"], key=f"focus_{candidate_num}")
             st.markdown('</div>', unsafe_allow_html=True)
+            
+            # Analysis Settings (Options 1-3)
+            st.markdown('<div class="input-card">', unsafe_allow_html=True)
+            st.markdown("**⚙️ Analysis Settings**")
+            
+            # Option 1: Evaluator Persona
+            persona_options = {v["name"]: k for k, v in EVALUATOR_PERSONAS.items()}
+            selected_persona_name = st.selectbox(
+                "Evaluate as:",
+                options=list(persona_options.keys()),
+                index=0,
+                key=f"persona_{candidate_num}",
+                help="Different perspectives catch different things"
+            )
+            selected_persona = persona_options[selected_persona_name]
+            
+            # Show persona description
+            st.caption(EVALUATOR_PERSONAS[selected_persona]["description"])
+            
+            # Option 2: Analysis Rigor
+            rigor_options = {v["name"]: k for k, v in RIGOR_LEVELS.items()}
+            selected_rigor_name = st.select_slider(
+                "Analysis rigor:",
+                options=list(rigor_options.keys()),
+                value="⚖️ Balanced",
+                key=f"rigor_{candidate_num}",
+                help="How critical should the analysis be?"
+            )
+            selected_rigor = rigor_options[selected_rigor_name]
+            
+            # Option 3: Key Concerns
+            key_concerns = st.text_area(
+                "Specific concerns to address (optional):",
+                placeholder="e.g., 'Worried about startup adaptability' or 'Need someone who can work autonomously'",
+                height=68,
+                key=f"concerns_{candidate_num}",
+                help="The AI will specifically look for evidence related to your concerns"
+            )
+            
+            st.markdown('</div>', unsafe_allow_html=True)
         
         st.markdown("---")
         
@@ -1765,8 +1915,17 @@ with tab_evaluate:
             elif not focus_areas:
                 st.warning("Select at least one focus area")
             else:
-                st.session_state.working_on = f"Evaluating {candidate_name}..."
-                result, _ = evaluate_candidate(candidate_name, cv_text, jd_text, transcript, focus_areas)
+                st.session_state.working_on = f"Evaluating {candidate_name} as {selected_persona_name}..."
+                result, _ = evaluate_candidate(
+                    candidate_name, 
+                    cv_text, 
+                    jd_text, 
+                    transcript, 
+                    focus_areas,
+                    persona=selected_persona,
+                    rigor=selected_rigor,
+                    key_concerns=key_concerns
+                )
                 st.session_state.working_on = None
                 
                 if not str(result).startswith("Error"):
