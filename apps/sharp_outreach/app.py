@@ -118,7 +118,7 @@ def log_usage(user_id, session_id, app, action, tokens=0):
 
 def init_session():
     for k, v in [('authenticated', False), ('user', None), ('is_god', False), ('session_token', None),
-                 ('user_plan', 'free'), ('boolean_result', None), ('email_result', None), ('linkedin_result', None), ('sales_result', None)]:
+                 ('user_plan', 'free'), ('boolean_result', None), ('email_result', None), ('linkedin_result', None), ('sales_result', None), ('sales_context_used', None), ('extracted_points', None)]:
         if k not in st.session_state: st.session_state[k] = v
 
 def check_url_auth():
@@ -552,27 +552,110 @@ with tab_sales:
         if sales_goal == "Custom":
             sales_goal = st.text_input("Custom Goal", key="sales_custom_goal")
     
-    # Context Document Section
-    with st.expander("📄 Add Context (Recommended)", expanded=True):
-        st.caption("Upload sales call notes, their LinkedIn, company website info, or previous correspondence")
-        sales_context_method = st.radio("Input:", ["📤 Upload", "📝 Paste"], horizontal=True, key="sales_ctx_method")
-        sales_context_doc = ""
-        if sales_context_method == "📤 Upload":
-            sales_file = st.file_uploader("Upload context document", type=['pdf', 'docx', 'txt'], key="sales_upload")
-            if sales_file:
-                sales_context_doc = extract_text_from_file(sales_file)
-                st.success(f"✅ Loaded {sales_file.name}")
-        else:
-            sales_context_doc = st.text_area(
-                "Paste context:", 
-                height=150, 
-                key="sales_paste",
-                placeholder="Paste any relevant info:\n- Sales call notes\n- Their LinkedIn summary\n- Company 'About' page\n- Previous email thread\n- Pain points discussed"
-            )
+    # Meeting Topic - NEW
+    st.markdown("**What's the meeting about?**")
+    meeting_topic = st.text_area(
+        "Meeting Topic", 
+        height=80, 
+        key="sales_meeting_topic",
+        placeholder="e.g., Discuss how our AI tools can cut their time-to-hire by 50%. They mentioned struggling with high-volume screening...",
+        label_visibility="collapsed"
+    )
+    
+    # Context Sources - Separate Optional Fields
+    with st.expander("📄 Context Sources (Optional but recommended)", expanded=False):
+        st.caption("Add any info you have — the more context, the better the personalization")
+        
+        ctx_c1, ctx_c2 = st.columns(2)
+        with ctx_c1:
+            sales_linkedin = st.text_area("🔗 LinkedIn Profile/Summary", height=100, key="sales_linkedin", placeholder="Paste their LinkedIn summary or profile info...")
+            sales_website = st.text_area("🌐 Company Website/About", height=100, key="sales_website", placeholder="Paste relevant info from their website...")
+        with ctx_c2:
+            sales_call_notes = st.text_area("📞 Previous Call/Meeting Notes", height=100, key="sales_call_notes", placeholder="Any notes from past conversations...")
+            sales_other = st.text_area("📝 Other Context", height=100, key="sales_other", placeholder="Previous emails, pain points, mutual connections...")
+        
+        # File upload as alternative
+        st.markdown("**Or upload a document:**")
+        sales_file = st.file_uploader("Upload context document", type=['pdf', 'docx', 'txt'], key="sales_upload")
+        sales_file_content = ""
+        if sales_file:
+            sales_file_content = extract_text_from_file(sales_file)
+            st.success(f"✅ Loaded {sales_file.name}")
+        
+        # Extract Key Points Button
+        st.markdown("---")
+        if st.button("🔍 Extract Key Points from Context", use_container_width=True):
+            context_to_analyze = build_sales_context() if 'build_sales_context' in dir() else ""
+            # Build context manually here since function not defined yet
+            parts = []
+            if sales_linkedin: parts.append(f"LINKEDIN:\n{sales_linkedin}")
+            if sales_website: parts.append(f"WEBSITE:\n{sales_website}")
+            if sales_call_notes: parts.append(f"CALL NOTES:\n{sales_call_notes}")
+            if sales_other: parts.append(f"OTHER:\n{sales_other}")
+            if sales_file_content: parts.append(f"DOCUMENT:\n{sales_file_content}")
+            context_to_analyze = "\n\n".join(parts)
+            
+            if context_to_analyze.strip():
+                with st.spinner("Analyzing context..."):
+                    extract_prompt = f"""Analyze this context about a sales prospect and extract the key points that would be useful for outreach.
+
+CONTEXT:
+{context_to_analyze[:8000]}
+
+Return a concise summary in this format:
+
+**🎯 Key Talking Points:**
+- [Most relevant point for outreach]
+- [Second point]
+- [Third point]
+
+**😣 Pain Points / Challenges:**
+- [Any problems or needs mentioned]
+
+**🏆 Recent Wins / News:**
+- [Anything notable - funding, awards, growth, launches]
+
+**🤝 Connection Angles:**
+- [Mutual connections, shared experiences, common ground]
+
+**⚠️ Watch Out For:**
+- [Any sensitivities or things to avoid]
+
+Be concise. Only include what's actually in the context - don't make things up."""
+                    
+                    result, _ = call_claude(extract_prompt, 1500, "extract_context")
+                    if not result.startswith("Error"):
+                        st.session_state.extracted_points = result
+                    else:
+                        st.error(result)
+            else:
+                st.warning("Add some context first (LinkedIn, website, call notes, or upload a file)")
+        
+        # Show extracted points
+        if st.session_state.get('extracted_points'):
+            st.markdown("---")
+            st.markdown(st.session_state.extracted_points)
+            if st.button("✖️ Clear Summary", key="clear_extract"):
+                st.session_state.extracted_points = None
+                st.rerun()
+    
+    # Combine all context
+    def build_sales_context():
+        parts = []
+        if sales_linkedin: parts.append(f"LINKEDIN PROFILE:\n{sales_linkedin}")
+        if sales_website: parts.append(f"COMPANY WEBSITE:\n{sales_website}")
+        if sales_call_notes: parts.append(f"CALL/MEETING NOTES:\n{sales_call_notes}")
+        if sales_other: parts.append(f"OTHER CONTEXT:\n{sales_other}")
+        if sales_file_content: parts.append(f"UPLOADED DOCUMENT:\n{sales_file_content}")
+        return "\n\n---\n\n".join(parts)
     
     if st.button("✉️ Generate Outreach Email", type="primary", use_container_width=True):
         if sales_contact_name or sales_contact_company:
             with st.spinner("Generating personalized outreach..."):
+                combined_context = build_sales_context()
+                if meeting_topic:
+                    combined_context = f"MEETING TOPIC/PURPOSE:\n{meeting_topic}\n\n---\n\n{combined_context}"
+                
                 result, _ = generate_sales_outreach(
                     lead_type[0], 
                     sales_your_name, 
@@ -581,10 +664,11 @@ with tab_sales:
                     sales_contact_company, 
                     sales_goal, 
                     sales_cta,
-                    sales_context_doc
+                    combined_context
                 )
                 if not result.startswith("Error"): 
                     st.session_state.sales_result = result
+                    st.session_state.sales_context_used = combined_context
                     st.rerun()
                 else: 
                     st.error(result)
@@ -606,7 +690,7 @@ with tab_sales:
             # Main Email
             st.markdown("### ✉️ Email Body")
             email_body = data.get('email_body', '')
-            st.text_area("Main Email", email_body, height=200, key="sales_main_email")
+            edited_email = st.text_area("Main Email", email_body, height=200, key="sales_main_email")
             
             # PS Line
             if data.get('ps_line'):
@@ -624,19 +708,62 @@ with tab_sales:
                     for tip in data.get('tips', []):
                         st.markdown(f"• {tip}")
             
+            # Refine Section - NEW
+            st.markdown("---")
+            st.markdown("### 🔄 Refine Email")
+            refine_instruction = st.text_input(
+                "Tell the AI how to improve it:",
+                key="sales_refine_input",
+                placeholder="e.g., Make it shorter, add urgency, mention their recent funding, sound less salesy..."
+            )
+            
+            if st.button("🔄 Refine Email", use_container_width=True):
+                if refine_instruction:
+                    with st.spinner("Refining..."):
+                        refine_prompt = f"""Refine this sales outreach email based on the instruction.
+
+CURRENT EMAIL:
+{edited_email}
+
+INSTRUCTION: {refine_instruction}
+
+ORIGINAL CONTEXT:
+{st.session_state.get('sales_context_used', '')}
+
+Return the same JSON format:
+```json
+{{
+    "subject_lines": ["<refined option 1>", "<refined option 2>", "<refined option 3>"],
+    "email_body": "<refined email>",
+    "ps_line": "<optional PS>",
+    "follow_up_subject": "<subject>",
+    "follow_up_body": "<follow-up>",
+    "tips": ["<tip>"]
+}}
+```"""
+                        result, _ = call_claude(refine_prompt, 3000, "sales_refine")
+                        if not result.startswith("Error"):
+                            st.session_state.sales_result = result
+                            st.rerun()
+                        else:
+                            st.error(result)
+                else:
+                    st.warning("Enter refinement instructions")
+            
             # Export
             st.markdown("---")
             c1, c2, c3 = st.columns(3)
             with c1:
-                full_email = f"Subject: {data.get('subject_lines', [''])[0]}\n\n{email_body}"
+                full_email = f"Subject: {data.get('subject_lines', [''])[0]}\n\n{edited_email}"
                 if data.get('ps_line'):
                     full_email += f"\n\nP.S. {data.get('ps_line')}"
                 st.download_button("📋 Copy Email", full_email, "outreach_email.txt", use_container_width=True)
             with c2:
                 st.download_button("🔗 Export JSON", json.dumps(data, indent=2), "outreach.json", use_container_width=True)
             with c3:
-                if st.button("🔄 Clear", use_container_width=True):
+                if st.button("🗑️ Start Over", use_container_width=True):
                     st.session_state.sales_result = None
+                    st.session_state.sales_context_used = None
                     st.rerun()
                     
         except Exception as e: 
