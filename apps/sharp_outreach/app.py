@@ -8,6 +8,41 @@ import json
 import re
 import io
 
+# ============================================
+# FILE EXTRACTION
+# ============================================
+def extract_text_from_file(uploaded_file):
+    """Extract text from uploaded file (PDF, DOCX, TXT)"""
+    if uploaded_file is None:
+        return ""
+    
+    file_type = uploaded_file.name.split('.')[-1].lower()
+    content = uploaded_file.read()
+    uploaded_file.seek(0)
+    
+    if file_type == 'txt':
+        return content.decode('utf-8', errors='ignore')
+    
+    elif file_type == 'pdf':
+        try:
+            import fitz
+            pdf = fitz.open(stream=content, filetype="pdf")
+            text = "\n".join([page.get_text() for page in pdf])
+            pdf.close()
+            return text
+        except:
+            return re.sub(r'[^\x20-\x7E\n]', ' ', content.decode('utf-8', errors='ignore'))
+    
+    elif file_type in ['docx', 'doc']:
+        try:
+            from docx import Document
+            doc = Document(io.BytesIO(content))
+            return '\n'.join([p.text for p in doc.paragraphs if p.text.strip()])
+        except:
+            return "[DOCX extraction failed - paste content instead]"
+    
+    return content.decode('utf-8', errors='ignore')
+
 SUPABASE_URL = "https://qkjtprqgblnfftrotyks.supabase.co"
 SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFranRwcnFnYmxuZmZ0cm90eWtzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUzNTgzNDAsImV4cCI6MjA4MDkzNDM0MH0.pVzSq4M5i58zBGl7OPDhNL9qYBcg-bz8MVrBI5MQSkw"
 SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", SUPABASE_ANON_KEY)
@@ -83,7 +118,7 @@ def log_usage(user_id, session_id, app, action, tokens=0):
 
 def init_session():
     for k, v in [('authenticated', False), ('user', None), ('is_god', False), ('session_token', None),
-                 ('user_plan', 'free'), ('boolean_result', None), ('email_result', None), ('linkedin_result', None)]:
+                 ('user_plan', 'free'), ('boolean_result', None), ('email_result', None), ('linkedin_result', None), ('sales_result', None)]:
         if k not in st.session_state: st.session_state[k] = v
 
 def check_url_auth():
@@ -133,8 +168,17 @@ def call_claude(prompt, max_tokens=4000, action="outreach"):
     except Exception as e:
         return f"Error: {e}", 0
 
-def generate_boolean(title, must_have, nice_to_have, exclude, location, platform, experience):
+def generate_boolean(title, must_have, nice_to_have, exclude, location, platform, experience, context_doc=""):
     syntax = PLATFORMS.get(platform, PLATFORMS["linkedin_recruiter"])
+    
+    context_section = ""
+    if context_doc:
+        context_section = f"""
+CONTEXT DOCUMENT (JD or CV):
+{context_doc[:5000]}
+Use this to extract additional relevant skills, terminology, and requirements.
+"""
+    
     prompt = f"""Generate Boolean search for {syntax['name']}.
 
 TITLE: {title}
@@ -144,15 +188,24 @@ EXCLUDE: {exclude}
 LOCATION: {location}
 EXPERIENCE: {experience}+ years
 SYNTAX: AND={syntax['and']}, OR={syntax['or']}, NOT={syntax['not']}
-
+{context_section}
 OUTPUT JSON:
 ```json
 {{"primary": "<main boolean>", "alternatives": [{{"name": "Title Focus", "string": "<boolean>"}}, {{"name": "Skills Focus", "string": "<boolean>"}}], "xray": {{"linkedin": "site:linkedin.com/in <search>", "github": "site:github.com <search>"}}, "tips": ["<tip>"]}}
 ```"""
     return call_claude(prompt, 2000, "boolean")
 
-def generate_emails(template, recruiter, candidate, job, cta):
+def generate_emails(template, recruiter, candidate, job, cta, context_doc=""):
     tpl = EMAIL_TEMPLATES.get(template, EMAIL_TEMPLATES["3_touch_passive"])
+    
+    context_section = ""
+    if context_doc:
+        context_section = f"""
+CONTEXT DOCUMENT (JD, Interview Script, or Call Notes):
+{context_doc[:6000]}
+Use this to personalize emails with specific talking points, requirements, and selling points.
+"""
+    
     prompt = f"""Generate {tpl['touches']}-email sequence ({tpl['name']}).
 
 RECRUITER: {recruiter}
@@ -160,7 +213,7 @@ CANDIDATE: {candidate}
 JOB: {job}
 CTA: {cta or '[CALENDAR_LINK]'}
 TIMING: {tpl['spacing']}
-
+{context_section}
 OUTPUT JSON:
 ```json
 {{"sequence": "{tpl['name']}", "emails": [{{"number": 1, "day": "Day 1", "subject": "<subject>", "body": "<email>", "cta": "<cta>"}}], "tips": ["<tip>"], "response_rate": "<X%>"}}
@@ -169,17 +222,88 @@ OUTPUT JSON:
 Make emails personalized, concise, value-focused."""
     return call_claude(prompt, 4000, "email_sequence")
 
-def generate_linkedin(name, role, hook, cta):
+def generate_linkedin(name, role, hook, cta, context_doc=""):
+    context_section = ""
+    if context_doc:
+        context_section = f"""
+CONTEXT (JD or CV):
+{context_doc[:2000]}
+Use relevant details to personalize the message.
+"""
+    
     prompt = f"""Write LinkedIn connection request (MAX 300 chars).
 
 NAME: {name}
 ROLE: {role}
 HOOK: {hook}
 CTA: {cta or 'Ask to chat'}
-
+{context_section}
 Requirements: Under 300 chars, no generic opener, personalized, soft CTA.
 Output message only."""
     return call_claude(prompt, 500, "linkedin")
+
+def generate_sales_outreach(lead_type, your_name, your_company, contact_name, contact_company, goal, cta_link, context_doc=""):
+    """Generate sales/BD outreach email based on lead type and context"""
+    
+    lead_descriptions = {
+        "warm_lead": "Someone who has shown interest (downloaded content, attended webinar, replied to previous outreach)",
+        "cold_lead": "No prior relationship - first contact",
+        "existing_client": "Current paying customer - upsell, check-in, or expansion opportunity",
+        "previous_client": "Former customer - re-engagement or win-back",
+        "referral": "Introduced by mutual connection",
+        "event_followup": "Met at conference, webinar, or networking event"
+    }
+    
+    context_section = ""
+    if context_doc:
+        context_section = f"""
+CONTEXT DOCUMENT (Sales call notes, LinkedIn profile, website info, etc.):
+{context_doc[:6000]}
+
+Use this context to:
+- Reference specific pain points or needs mentioned
+- Mention relevant details about their company/role
+- Personalize based on previous interactions
+- Include specific value propositions that match their situation
+"""
+    
+    prompt = f"""Write a sales/BD outreach email.
+
+LEAD TYPE: {lead_type.replace('_', ' ').title()}
+LEAD CONTEXT: {lead_descriptions.get(lead_type, 'Business prospect')}
+
+FROM:
+- Name: {your_name or '[Your Name]'}
+- Company: {your_company or '[Your Company]'}
+
+TO:
+- Name: {contact_name or '[Contact Name]'}
+- Company: {contact_company or '[Their Company]'}
+
+GOAL: {goal or 'Schedule a discovery call'}
+CTA/CALENDAR: {cta_link or '[CALENDAR_LINK]'}
+{context_section}
+OUTPUT JSON:
+```json
+{{
+    "subject_lines": ["<option 1>", "<option 2>", "<option 3>"],
+    "email_body": "<the email - conversational, value-focused, under 150 words>",
+    "ps_line": "<optional PS for extra hook>",
+    "follow_up_subject": "<subject for follow-up if no reply>",
+    "follow_up_body": "<shorter follow-up email - under 75 words>",
+    "tips": ["<personalization tip>", "<timing tip>"]
+}}
+```
+
+WRITING RULES:
+1. No generic openers like "I hope this finds you well"
+2. Lead with value or relevance, not your pitch
+3. One clear CTA
+4. Sound human, not salesy
+5. Match tone to lead type (warmer for existing clients, more direct for cold)
+6. If context provided, reference specific details"""
+    
+    return call_claude(prompt, 3000, "sales_outreach")
 
 def export_to_pdf(data, title):
     try:
@@ -262,7 +386,22 @@ with st.sidebar:
         st.rerun()
 
 st.title("🎣 Sharp Outreach")
-tab_bool, tab_email, tab_li = st.tabs(["🔍 Boolean Search", "📧 Email Sequences", "💼 LinkedIn"])
+
+st.markdown("""
+<div style="background: linear-gradient(135deg, rgba(99,102,241,0.1), rgba(139,92,246,0.1)); border: 1px solid rgba(99,102,241,0.3); border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+    <p style="margin: 0; color: #e2e8f0; font-size: 15px; line-height: 1.6;">
+        <strong>Your outreach command center.</strong> Build targeted Boolean searches to find the right candidates, 
+        generate personalized email sequences that get responses, craft sales outreach that opens doors, 
+        and write LinkedIn messages that stay under the character limit.
+    </p>
+    <p style="margin: 12px 0 0 0; color: #9ca3af; font-size: 14px;">
+        💡 <strong>Pro tip:</strong> Upload context docs (JDs, call notes, LinkedIn profiles) to make your outreach 
+        feel personal, not templated. The AI uses your context to write like you've done your homework.
+    </p>
+</div>
+""", unsafe_allow_html=True)
+
+tab_bool, tab_email, tab_sales, tab_li = st.tabs(["🔍 Boolean Search", "📧 Candidate Sequences", "💼 Sales Outreach", "🔗 LinkedIn"])
 
 with tab_bool:
     st.subheader("Boolean Search Generator")
@@ -287,10 +426,23 @@ with tab_bool:
         exclude = st.text_input("Exclude")
         exp = st.slider("Min Experience", 0, 20, 3)
     
+    # Context Document Section
+    with st.expander("📄 Add Context Document (Optional)", expanded=False):
+        st.caption("Upload a JD or CV to extract additional skills and terminology")
+        bool_context_method = st.radio("Input:", ["📤 Upload", "📝 Paste"], horizontal=True, key="bool_ctx_method")
+        bool_context_doc = ""
+        if bool_context_method == "📤 Upload":
+            bool_file = st.file_uploader("Upload JD or CV", type=['pdf', 'docx', 'txt'], key="bool_upload")
+            if bool_file:
+                bool_context_doc = extract_text_from_file(bool_file)
+                st.success(f"✅ Loaded {bool_file.name}")
+        else:
+            bool_context_doc = st.text_area("Paste JD or CV:", height=150, key="bool_paste")
+    
     if st.button("🔍 Generate Boolean", type="primary", use_container_width=True):
         if title and must:
             with st.spinner("Generating..."):
-                result, _ = generate_boolean(title, must, nice, exclude, location, platform, exp)
+                result, _ = generate_boolean(title, must, nice, exclude, location, platform, exp, bool_context_doc)
                 if not result.startswith("Error"): st.session_state.boolean_result = result; st.rerun()
                 else: st.error(result)
     
@@ -320,13 +472,26 @@ with tab_email:
     
     template = st.selectbox("Template", list(EMAIL_TEMPLATES.keys()), format_func=lambda x: EMAIL_TEMPLATES[x]['name'])
     
+    # Context Document Section
+    with st.expander("📄 Add Context Document (Optional)", expanded=False):
+        st.caption("Upload a JD, interview script, or sales call notes to personalize emails")
+        email_context_method = st.radio("Input:", ["📤 Upload", "📝 Paste"], horizontal=True, key="email_ctx_method")
+        email_context_doc = ""
+        if email_context_method == "📤 Upload":
+            email_file = st.file_uploader("Upload document", type=['pdf', 'docx', 'txt'], key="email_upload")
+            if email_file:
+                email_context_doc = extract_text_from_file(email_file)
+                st.success(f"✅ Loaded {email_file.name}")
+        else:
+            email_context_doc = st.text_area("Paste JD, interview script, or call notes:", height=150, key="email_paste")
+    
     if st.button("📧 Generate Sequence", type="primary", use_container_width=True):
         if cand_name and job_title:
             with st.spinner("Generating..."):
                 recruiter = f"Name: {rec_name}, Company: {rec_company}"
                 candidate = f"Name: {cand_name}, Role: {cand_role}"
                 job = f"Title: {job_title}"
-                result, _ = generate_emails(template, recruiter, candidate, job, cta)
+                result, _ = generate_emails(template, recruiter, candidate, job, cta, email_context_doc)
                 if not result.startswith("Error"): st.session_state.email_result = result; st.rerun()
                 else: st.error(result)
     
@@ -349,6 +514,135 @@ with tab_email:
             with c3: st.download_button("🔗 JSON", json.dumps(data, indent=2), "sequence.json", use_container_width=True)
         except Exception as e: st.error(f"Parse error: {e}")
 
+with tab_sales:
+    st.subheader("Sales & BD Outreach")
+    st.caption("Generate personalized outreach emails for prospects and clients")
+    
+    # Lead Type Selection
+    lead_type = st.selectbox("Lead Type", [
+        ("warm_lead", "🔥 Warm Lead - Showed interest (downloaded content, attended webinar)"),
+        ("cold_lead", "❄️ Cold Lead - First contact, no prior relationship"),
+        ("existing_client", "⭐ Existing Client - Upsell, check-in, or expansion"),
+        ("previous_client", "🔄 Previous Client - Re-engagement or win-back"),
+        ("referral", "🤝 Referral - Introduced by mutual connection"),
+        ("event_followup", "📅 Event Follow-up - Met at conference or webinar")
+    ], format_func=lambda x: x[1])
+    
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("**Your Info**")
+        sales_your_name = st.text_input("Your Name", key="sales_name")
+        sales_your_company = st.text_input("Your Company", key="sales_company")
+        sales_cta = st.text_input("Calendar/CTA Link", key="sales_cta", placeholder="https://calendly.com/...")
+    
+    with c2:
+        st.markdown("**Contact Info**")
+        sales_contact_name = st.text_input("Contact Name", key="sales_contact")
+        sales_contact_company = st.text_input("Their Company", key="sales_contact_co")
+        sales_goal = st.selectbox("Goal", [
+            "Schedule a discovery call",
+            "Book a demo",
+            "Re-engage conversation",
+            "Upsell/expand services",
+            "Get referral introduction",
+            "Follow up on proposal",
+            "Check in on satisfaction",
+            "Custom"
+        ], key="sales_goal")
+        if sales_goal == "Custom":
+            sales_goal = st.text_input("Custom Goal", key="sales_custom_goal")
+    
+    # Context Document Section
+    with st.expander("📄 Add Context (Recommended)", expanded=True):
+        st.caption("Upload sales call notes, their LinkedIn, company website info, or previous correspondence")
+        sales_context_method = st.radio("Input:", ["📤 Upload", "📝 Paste"], horizontal=True, key="sales_ctx_method")
+        sales_context_doc = ""
+        if sales_context_method == "📤 Upload":
+            sales_file = st.file_uploader("Upload context document", type=['pdf', 'docx', 'txt'], key="sales_upload")
+            if sales_file:
+                sales_context_doc = extract_text_from_file(sales_file)
+                st.success(f"✅ Loaded {sales_file.name}")
+        else:
+            sales_context_doc = st.text_area(
+                "Paste context:", 
+                height=150, 
+                key="sales_paste",
+                placeholder="Paste any relevant info:\n- Sales call notes\n- Their LinkedIn summary\n- Company 'About' page\n- Previous email thread\n- Pain points discussed"
+            )
+    
+    if st.button("✉️ Generate Outreach Email", type="primary", use_container_width=True):
+        if sales_contact_name or sales_contact_company:
+            with st.spinner("Generating personalized outreach..."):
+                result, _ = generate_sales_outreach(
+                    lead_type[0], 
+                    sales_your_name, 
+                    sales_your_company,
+                    sales_contact_name, 
+                    sales_contact_company, 
+                    sales_goal, 
+                    sales_cta,
+                    sales_context_doc
+                )
+                if not result.startswith("Error"): 
+                    st.session_state.sales_result = result
+                    st.rerun()
+                else: 
+                    st.error(result)
+        else:
+            st.warning("Enter contact name or company")
+    
+    if st.session_state.get('sales_result'):
+        try:
+            m = re.search(r'```json\s*(.*?)\s*```', st.session_state.sales_result, re.DOTALL)
+            data = json.loads(m.group(1) if m else st.session_state.sales_result)
+            
+            st.markdown("---")
+            
+            # Subject Lines
+            st.markdown("### 📬 Subject Line Options")
+            for i, subj in enumerate(data.get('subject_lines', []), 1):
+                st.code(subj, language=None)
+            
+            # Main Email
+            st.markdown("### ✉️ Email Body")
+            email_body = data.get('email_body', '')
+            st.text_area("Main Email", email_body, height=200, key="sales_main_email")
+            
+            # PS Line
+            if data.get('ps_line'):
+                st.markdown("**P.S. Line:**")
+                st.info(data.get('ps_line'))
+            
+            # Follow-up
+            with st.expander("📨 Follow-up Email (if no reply)"):
+                st.markdown(f"**Subject:** {data.get('follow_up_subject', '')}")
+                st.text_area("Follow-up Body", data.get('follow_up_body', ''), height=100, key="sales_followup")
+            
+            # Tips
+            if data.get('tips'):
+                with st.expander("💡 Tips"):
+                    for tip in data.get('tips', []):
+                        st.markdown(f"• {tip}")
+            
+            # Export
+            st.markdown("---")
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                full_email = f"Subject: {data.get('subject_lines', [''])[0]}\n\n{email_body}"
+                if data.get('ps_line'):
+                    full_email += f"\n\nP.S. {data.get('ps_line')}"
+                st.download_button("📋 Copy Email", full_email, "outreach_email.txt", use_container_width=True)
+            with c2:
+                st.download_button("🔗 Export JSON", json.dumps(data, indent=2), "outreach.json", use_container_width=True)
+            with c3:
+                if st.button("🔄 Clear", use_container_width=True):
+                    st.session_state.sales_result = None
+                    st.rerun()
+                    
+        except Exception as e: 
+            st.error(f"Parse error: {e}")
+            st.text(st.session_state.sales_result)
+
 with tab_li:
     st.subheader("LinkedIn Connection Request")
     li_name = st.text_input("Candidate Name", key="li_name")
@@ -357,10 +651,23 @@ with tab_li:
     if li_hook == "Custom": li_hook = st.text_input("Custom Hook")
     li_cta = st.text_input("CTA Link (optional)")
     
+    # Context Document Section
+    with st.expander("📄 Add Context Document (Optional)", expanded=False):
+        st.caption("Upload a JD or CV to personalize your message")
+        li_context_method = st.radio("Input:", ["📤 Upload", "📝 Paste"], horizontal=True, key="li_ctx_method")
+        li_context_doc = ""
+        if li_context_method == "📤 Upload":
+            li_file = st.file_uploader("Upload JD or CV", type=['pdf', 'docx', 'txt'], key="li_upload")
+            if li_file:
+                li_context_doc = extract_text_from_file(li_file)
+                st.success(f"✅ Loaded {li_file.name}")
+        else:
+            li_context_doc = st.text_area("Paste JD or CV:", height=150, key="li_paste")
+    
     if st.button("💼 Generate Message", type="primary", use_container_width=True):
         if li_name and li_role:
             with st.spinner("Generating..."):
-                result, _ = generate_linkedin(li_name, li_role, li_hook, li_cta)
+                result, _ = generate_linkedin(li_name, li_role, li_hook, li_cta, li_context_doc)
                 if not result.startswith("Error"): st.session_state.linkedin_result = result; st.rerun()
                 else: st.error(result)
     
